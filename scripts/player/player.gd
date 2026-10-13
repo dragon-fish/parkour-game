@@ -3894,6 +3894,15 @@ func _physics_process(delta: float) -> void:
 		_log_grab_camera()
 
 func _input(event: InputEvent) -> void:
+	# Every key and button press, latched for the next poll, HERE -- ahead of
+	# the GUI and of everything that might consume it -- because a press the
+	# poll never sees is a press lost, and the original's one-frame windows
+	# need every one. Only a READ: the source takes nothing while the mouse is
+	# not captured, which is also what keeps the click that captures it out.
+	# What the buttons DO in the game still waits behind the GUI, below.
+	if (event is InputEventKey or event is InputEventMouseButton) \
+			and input_source is KeyboardInputSource:
+		(input_source as KeyboardInputSource).accumulate_press(event)
 	if event is InputEventMouseMotion and input_source is KeyboardInputSource:
 		# Only steer the view while the mouse is actually captured. With the
 		# cursor released (F1 panel open, or right after Esc) this motion is
@@ -3919,16 +3928,24 @@ func _input(event: InputEvent) -> void:
 ## with the cursor captured there is no GUI to compete with, and look input
 ## must never queue behind it.
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton \
-			and _handle_third_person_button(event as InputEventMouseButton):
+	if _handle_third_person_input(event):
 		return
 	if event is InputEventMouseButton and event.pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
 		# Click back into the game. Esc releases the cursor for the tuning
 		# panel; without this the only way back in was F11, which nobody
-		# guesses.
+		# guesses. Fixed to the left button whatever attack is bound to: it is
+		# the pointer's click, not a game action.
 		if owns_mouse and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			return
+	if _is_fresh_press(event) and InputBindings.matches(event, InputBindings.TOGGLE_VIEW):
+		# Not a debug peek -- CameraRig saves the choice and keeps it across
+		# deaths (see its third_person note). One movement stack and one
+		# animation set behind both views, so this switches the camera and
+		# nothing else.
+		if camera_rig != null:
+			camera_rig.toggle_third_person()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		# Esc now belongs to PauseUi._unhandled_input (autoload, consumes it globally).
@@ -3936,13 +3953,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.physical_keycode == KEY_T:
 			toggle_noclip()
-		elif event.physical_keycode == KEY_V:
-			# V for view. Not a debug peek -- CameraRig saves the choice and
-			# keeps it across deaths (see its third_person note). One movement
-			# stack and one animation set behind both views, so this switches
-			# the camera and nothing else.
-			if camera_rig != null:
-				camera_rig.toggle_third_person()
+
+## A key or button going down, never a key's auto-repeat.
+static func _is_fresh_press(event: InputEvent) -> bool:
+	if event is InputEventKey:
+		return (event as InputEventKey).pressed and not (event as InputEventKey).echo
+	return event is InputEventMouseButton and (event as InputEventMouseButton).pressed
 
 ## Straight-line flight along the view, position written directly so no
 ## collision or gravity applies. Deliberately does NOT run the move manager:
@@ -3955,37 +3971,42 @@ var _framing_drag: bool = false
 ## barely moves is a CLICK and cycles the shoulder instead.
 var _framing_travel: float = 0.0
 
-## Wheel and middle button, for the third-person view only.
+## Zoom and framing, for the third-person view only: by default the wheel and
+## the middle button, wherever the player bound them.
 ##
 ## Returns true when the event was consumed, so the caller leaves it alone.
 ## Everything here is framing: none of it touches the body, the look or any
 ## move, and none of it does anything in first person -- where a wheel notch
 ## would otherwise silently change a distance nobody can see.
-func _handle_third_person_button(event: InputEventMouseButton) -> bool:
+func _handle_third_person_input(event: InputEvent) -> bool:
 	if camera_rig == null or not camera_rig.in_third_person():
 		return false
-	match event.button_index:
-		MOUSE_BUTTON_WHEEL_UP:
-			if event.pressed:
-				camera_rig.zoom_third_person(-1.0)
+	if not (event is InputEventKey or event is InputEventMouseButton):
+		return false
+	var echo: bool = event is InputEventKey and (event as InputEventKey).echo
+	if InputBindings.matches(event, InputBindings.ZOOM_IN):
+		if event.is_pressed() and not echo:
+			camera_rig.zoom_third_person(-1.0)
+		return true
+	if InputBindings.matches(event, InputBindings.ZOOM_OUT):
+		if event.is_pressed() and not echo:
+			camera_rig.zoom_third_person(1.0)
+		return true
+	if InputBindings.matches(event, InputBindings.FRAME_CAMERA):
+		if echo:
 			return true
-		MOUSE_BUTTON_WHEEL_DOWN:
-			if event.pressed:
-				camera_rig.zoom_third_person(1.0)
-			return true
-		MOUSE_BUTTON_MIDDLE:
-			if event.pressed:
-				_framing_drag = true
-				_framing_travel = 0.0
-			else:
-				# A press that went nowhere is a click. The slack matters: a
-				# middle button is stiff and almost always moves a pixel or two
-				# on the way down, so an exact-zero test would make the cycle
-				# feel broken rather than precise.
-				if _framing_travel <= config.camera.third_person_click_slack:
-					camera_rig.cycle_third_person_shoulder()
-				_framing_drag = false
-			return true
+		if event.is_pressed():
+			_framing_drag = true
+			_framing_travel = 0.0
+		else:
+			# A press that went nowhere is a click. The slack matters: a
+			# middle button is stiff and almost always moves a pixel or two
+			# on the way down, so an exact-zero test would make the cycle
+			# feel broken rather than precise.
+			if _framing_travel <= config.camera.third_person_click_slack:
+				camera_rig.cycle_third_person_shoulder()
+			_framing_drag = false
+		return true
 	return false
 
 

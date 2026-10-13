@@ -68,6 +68,9 @@ static func defaults() -> Dictionary:
 		# On: it is the original's look. Off takes every cloth and loose box
 		# out of the physics server, which is most of what they cost.
 		physics_props = true,
+		# action -> its two bindings. See InputBindings for the shape; the
+		# defaults are the keys this project read before bindings existed.
+		bindings = InputBindings.defaults(),
 	}
 
 
@@ -80,6 +83,9 @@ static func load_settings() -> Dictionary:
 		return s
 	for key in s:
 		s[key] = cfg.get_value(_SECTION, key, s[key])
+	# A table from an older file can lack an action added since, or carry a
+	# slot nothing can read; either way the game must get a whole table.
+	s.bindings = InputBindings.sanitized(s.bindings)
 	# A file written before volume was a percentage carries volume_db. Read
 	# it once, on its own terms, so an upgrade does not silently reset the
 	# volume to the default.
@@ -121,6 +127,7 @@ static func apply_global(s: Dictionary) -> void:
 	# section does most of what culling bought.
 	viewport.use_occlusion_culling = false
 	physics_props_on = s.physics_props
+	InputBindings.use(s.bindings)
 	(Engine.get_main_loop() as SceneTree).call_group(PHYSICS_PROPS_GROUP, "simulate", physics_props_on)
 
 	# Headless has no window; the editor-embedded game has one it is not
