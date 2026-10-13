@@ -302,6 +302,37 @@ samples several coordinates, the first sample with an explicit coordinate
 decides: an unconnected sample is usually a tiling-1 variation mask, and taking
 its tiling turned the chain-link fence into one knot per panel.
 
+## Particle emitters: the rooftop vapour
+
+`particles.py` reads every placed `Emitter` actor (template, Location,
+Rotation, DrawScale, Base, `bAutoActivate`, Group) into the manifest's
+`emitters`, and the templates they name -- every emitter, every LOD, every
+module with its distributions decoded -- into `particles.json`, with the
+textures their materials sample baked like any material's. The builder
+(`tools/me_level/me_particles.gd`) builds the families it has been judged on
+(`BUILT_FAMILIES`: the VentSmoke family so far) and counts the rest.
+
+- **A module records no archetype.** Its export's archetype field is 0, and it
+  is a delta against its class default in Engine.u (`Default__ParticleModule
+  Required` holds EmitterDuration, MaxDrawCount, SpawnRate). A distribution
+  does record one, a subobject of that default. Read without the default, a
+  Spawn module's RateScale is missing; read with it, it is 1.
+- **Templates arrive in copies.** A map package cooks in every template it
+  places (`Edge_Pt2_Art.FX_LevelEffects.Effects.PS_...`); copies that decode
+  the same are one template.
+- **The rate is the Spawn module's.** Required's SpawnRate is the older field:
+  Engine.u keeps it without CPF_Edit, and it holds one value copied to every
+  LOD, while Spawn.Rate changes per LOD and is 0 on every vent's last.
+- **LODs are not optional.** A vent's far LODs spawn fewer, LARGER particles
+  (75-100 uu up close, 200-400 past 52 m) and its last spawns none. Each LOD
+  is its own node over its own distance band. `ParticleLODBias` is 0 at every
+  compat level. The component's cooked `LODLevel` is editor state (10 on a
+  five-LOD template) and is not read.
+- **`PhysXOnly` is left out**: PX_* versions of the vents for a PhysX card,
+  standing where the ordinary emitters do.
+- **Static arrays** (`MirrorFlags[3]`) come back element by element; a struct
+  that is natively serialised (Guid, Matrix) is carried raw, never parsed.
+
 ## Skinned scenery: the helicopters
 
 Two chapters end on a helicopter, and neither is a static mesh or flies on a

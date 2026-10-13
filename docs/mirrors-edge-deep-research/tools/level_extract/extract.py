@@ -26,6 +26,7 @@ import skeletal_anim
 import skeletal_mesh
 import static_mesh
 import matinee
+import particles
 import environment
 import kismet
 import streaming
@@ -757,7 +758,9 @@ def main(config_path):
                          'excluded_by_anchor': 0, 'hidden': 0}}
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
-    placements, found_lights, bsp, matinees, end_links = [], [], [], [], []
+    placements, found_lights, bsp, matinees, end_links, emitters = [], [], [], [], [], []
+    # Particle textures are baked like any material's, at the level's texture size.
+    templates = particles.Templates(packages, meshes.baker)
     puppets, readers = {}, {}
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
     # Actors named by a checkpoint's `play`: their sequence is kept even with
@@ -770,6 +773,7 @@ def main(config_path):
         glass = matinee.collect_glass(packages, mr, report)
         panes = frozenset(g['name'] for g in glass)
         placements += collect_placements(mr, meshes, config, report, panes)
+        emitters += particles.collect_emitters(packages, mr, templates, report)
         collected = annotations.collect(packages, mr, defaults, report)
         once = matinee.self_disabling(mr)
         for a in collected['annotations']:
@@ -884,6 +888,8 @@ def main(config_path):
                 if min(distance_to_box(a, p['aabb']['min'], p['aabb']['max']) for a in anchors) <= radius]
         report['counts']['excluded_by_anchor'] = len(placements) - len(kept)
         placements = kept
+        emitters = [e for e in emitters
+                    if min(math.dist(a, e['position']) for a in anchors) <= radius]
 
     if config['initial_spawn']:
         names = names_of(notes['spawns'] + notes['checkpoints'])
@@ -901,7 +907,7 @@ def main(config_path):
         prefix = packages.persistent[:-len('p.me1')]
         names = [s['name'] for s in config['sections']]
         report['sections'] = {}
-        for record in placements + found_lights + notes['annotations'] + bsp + matinees + list(puppets.values()):
+        for record in placements + found_lights + notes['annotations'] + bsp + matinees + list(puppets.values()) + emitters:
             record['section'] = pk.section_of(record['package'], prefix, names)
             counts = report['sections'].setdefault(record['section'] or '(chapter)', {'packages': []})
             if record['package'] not in counts['packages']:
@@ -951,6 +957,9 @@ def main(config_path):
     report['checkpoints'] = len(notes['checkpoints'])
     report['placements'] = len(placements)
     report['bsp_polygons'] = len(bsp)
+    report['emitters'] = {}
+    for e in emitters:
+        report['emitters'][e['template']] = report['emitters'].get(e['template'], 0) + 1
 
     # The persistent package's WorldInfo is the chapter's; a level without one
     # (the tutorial lists its packages by hand) takes the first that has a sun.
@@ -977,6 +986,7 @@ def main(config_path):
     os.makedirs(out_dir, exist_ok=True)
     cast = puppet_show.write_bodies(puppets, readers, os.path.join(out_dir, 'puppets'), report)
     manifest = {'puppets': cast, 'config': config, 'streaming': flow, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
+                'emitters': emitters,
                 'annotations': notes['annotations'], 'spawns': notes['spawns'],
                 'checkpoints': notes['checkpoints'], 'matinees': matinees, 'report': report}
     with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
@@ -991,6 +1001,11 @@ def main(config_path):
         os.remove(kismet_path)
     with open(os.path.join(out_dir, 'meshes.json'), 'w', encoding='utf-8') as fh:
         json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
+    # The templates the emitters draw, and the textures their materials sample.
+    used_systems = {e['template'] for e in emitters}
+    with open(os.path.join(out_dir, 'particles.json'), 'w', encoding='utf-8') as fh:
+        json.dump({'systems': {n: s for n, s in templates.systems.items() if n in used_systems},
+                   'textures': templates.textures_of(used_systems)}, fh, ensure_ascii=False, separators=(',', ':'))
     used_materials = {s['material'] for r in mesh_out.values() for s in r['surfaces']}
     used_materials |= {o['material'] for p in placements for o in p.get('materials', []) if o}
     used_materials |= {f['material'] for f in bsp if f.get('material')}
