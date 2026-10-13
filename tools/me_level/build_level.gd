@@ -13,6 +13,7 @@ const Common := preload("res://tools/me_level/me_level_common.gd")
 const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const GeometryBuilder := preload("res://tools/me_level/geometry_builder.gd")
 const ShellBuilder := preload("res://tools/me_level/shell_builder.gd")
+const MeParticles := preload("res://tools/me_level/me_particles.gd")
 const SectionLoaderScript := preload("res://scripts/level/section_loader.gd")
 
 
@@ -22,7 +23,10 @@ func _initialize() -> void:
 		push_error("usage: build_level.gd -- <config.json> [--rebuild-interactions]")
 		quit(2)
 		return
-	quit(0 if _build(args[0], args.has("--rebuild-interactions")) else 1)
+	var ok := _build(args[0], args.has("--rebuild-interactions"))
+	if _particles != null and not _particles.counts.is_empty():
+		print("[me_level] particles: ", _particles.counts)
+	quit(0 if ok else 1)
 
 
 func _build(config_path: String, rebuild_interactions: bool) -> bool:
@@ -59,6 +63,15 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 		_library.normal_scale = float(_look[NORMAL_SCALE_DIAL])
 	if not _library.build(meshes, bakes):
 		return false
+	# Optional: an extract made before emitters were read has none.
+	var particles_path := dir.path_join("particles.json")
+	_particles = MeParticles.new(Common.read_json(particles_path) if FileAccess.file_exists(particles_path) else {})
+	# Taken from the whole manifest: a section's geometry carries no look of its
+	# own, and its sprites are exposed by the chapter's.
+	if manifest.get("environment") is Dictionary:
+		var environment: Node3D = GeometryBuilder._environment(manifest["environment"], _look)
+		_particles.exposure = environment.exposure()
+		environment.free()
 	manifest["puppet_bodies"] = _puppet_bodies(manifest, dir.path_join("puppets"), (paths.shell as String).get_basename() + "_puppets")
 
 	if config.get("split_sections", false):
@@ -81,6 +94,7 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 ## checkpoints, the chapter-wide layer and a SectionLoader over the sections.
 ## See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
 var _library = null
+var _particles = null
 var _look := {}
 ## `look` key for MeshLibrary.baker_tint_strength.
 const BAKER_TINT_DIAL := "baker_tint_strength"
@@ -91,6 +105,7 @@ const NORMAL_SCALE_DIAL := "normal_scale"
 func _geometry_builder():
 	var builder := GeometryBuilder.new()
 	builder.library = _library
+	builder.particles = _particles
 	builder.look_dials = _look
 	return builder
 
@@ -217,7 +232,7 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 ## The manifest restricted to one section; "" is the chapter-wide layer.
 static func _section_of(manifest: Dictionary, section: String) -> Dictionary:
 	var part := manifest.duplicate()
-	for key in ["placements", "lights", "annotations", "bsp", "checkpoints", "puppets"]:
+	for key in ["placements", "lights", "annotations", "bsp", "checkpoints", "puppets", "emitters"]:
 		if not manifest.has(key):
 			continue
 		part[key] = (manifest[key] as Array).filter(func(r: Dictionary) -> bool: return r.get("section", "") == section)

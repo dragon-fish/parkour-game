@@ -346,6 +346,12 @@ func _exposure() -> float:
 	return EXPOSURE_PER_SUN / reference * exposure_scale
 
 
+## The level's exposure, for what is built to be seen at a brightness of its
+## own whatever the exposure is (the particle sprites; me_particles.gd).
+func exposure() -> float:
+	return _exposure()
+
+
 func _arena() -> Arena:
 	var node := get_parent()
 	while node != null and not node is Arena:

@@ -238,6 +238,11 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		root.add_child(fall_heights)
 	else:
 		fall_heights.free()
+	# Last, so no node that was here before moves along.
+	if particles != null and not manifest.get("emitters", []).is_empty():
+		var effects: Node3D = particles.build(manifest["emitters"])
+		if effects != null:
+			root.add_child(effects)
 	return root
 
 
@@ -467,6 +472,8 @@ var _stretched_shapes := {}
 ## The mesh library that built the meshes, for placement material overrides.
 ## Null leaves every mesh on its own materials.
 var library = null
+## The level's emitter builder (me_particles.gd), or null for none.
+var particles = null
 ## The level config's "look" block: me_environment.gd dials by export name,
 ## plus LAMP_DIAL for the lights' energy_scale. Read from the config file the
 ## build was asked for, not from the manifest's copy of it, so a dial can be
