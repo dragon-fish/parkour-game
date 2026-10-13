@@ -635,6 +635,91 @@ func test_q_on_a_climb_turns_and_jumps_off_the_wall() -> void:
 	var off_wall: float = player.facing().dot(Vector3(normal.x, 0.0, normal.z).normalized())
 	assert_almost_eq(off_wall, 1.0, 0.01, "the pawn does not face off the wall")
 
+## A climb that has touched the wall and is still rising: where a Q is taken.
+func _climb_on_the_wall(player: Player) -> void:
+	await _start_climb(player)
+	var climb: WallClimbMove = player.move_manager.move_for(Move.WALL_CLIMB)
+	for i in 30:
+		if climb.has_reached_wall:
+			break
+		await step(1)
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.WALL_CLIMB, "test setup: no climb on the wall")
+	assert_true(climb.has_reached_wall, "test setup: the climb never touched the wall")
+
+## [ME:CONFIRMED decompile TdPlayerController.LookBehind, CheckJumpPressed,
+## TdPlayerMoveManager row 6] Q and the jump in one frame: LookBehind is an exec
+## binding and sets the turn as its key event arrives, the jump waits for
+## ProcessMove's CheckJumpPressed -- so whichever key went down first, the jump
+## reaches the turn, which takes it at MoveActiveTime 0.
+func test_q_and_jump_in_one_tick_turn_and_jump_off_the_wall() -> void:
+	var player: Player = await _climb_course()
+	var input: ScriptedInputSource = _world["input"]
+	await _climb_on_the_wall(player)
+	var normal: Vector3 = player.floor_normal
+	input.press_turn()
+	input.press_jump()
+	await step(1)
+	input.release_jump()
+	assert_eq(player.move_manager.current_name, Move.WALLCLIMB_180_TURN_JUMP, "Q did not turn off the climb")
+	var turn: WallClimb180TurnJumpMove = player.move_manager.move_for(Move.WALLCLIMB_180_TURN_JUMP)
+	assert_true(turn.jumped(), "the jump in Q's tick was not taken by the turn")
+	assert_gt(Vector2(player.velocity.x, player.velocity.z).dot(Vector2(normal.x, normal.z)), 0.0,
+		"the jump did not push off the wall")
+
+## [ME:CONFIRMED decompile 15.5] The turn takes a jump while MoveActiveTime <
+## JumpTimeWindow and no later: a press inside the window jumps on its own
+## tick, one after it is spent on the falling rows (WallKick, dead) and the
+## turn hands to Falling facing off the wall without a push.
+func test_the_turn_takes_a_jump_only_inside_its_window() -> void:
+	var c: WallClimb180TurnJumpConfig = MovementConfig.new().wall_climb_180_turn_jump
+	var window_ticks: int = int(round(c.jump_time_window / DT))
+	for case in [[window_ticks - 2, true], [window_ticks + 2, false]]:
+		var player: Player = await _climb_course()
+		var input: ScriptedInputSource = _world["input"]
+		await _climb_on_the_wall(player)
+		var normal: Vector3 = player.floor_normal
+		input.press_turn()
+		await step(1)
+		input.hold_move(0.0, 0.0)
+		var turn: WallClimb180TurnJumpMove = player.move_manager.move_for(Move.WALLCLIMB_180_TURN_JUMP)
+		await step(int(case[0]) - 1)
+		assert_false(turn.jumped(), "test setup: a jump before the press")
+		input.press_jump()
+		await step(1)
+		input.release_jump()
+		assert_eq(turn.jumped(), case[1], "a press %d ticks after Q" % case[0])
+		if not case[1]:
+			for i in 30:
+				if player.move_manager.current_name != Move.WALLCLIMB_180_TURN_JUMP:
+					break
+				await step(1)
+			assert_eq(player.move_manager.current_name, Move.FALLING, "a late press changed the move")
+			assert_lt(Vector2(player.velocity.x, player.velocity.z).dot(Vector2(normal.x, normal.z)),
+				1.0, "a late press still pushed off the wall")
+		TestWorld.teardown(_world)
+		_world = {}
+		await step(1)
+
+## [ME:CONFIRMED decompile TdPlayerController.PlayerWallWalking.PlayerMove]
+## No buffer: bPressedJump lives one frame. A jump a tick before the Q goes to
+## the climb's own row (WallClimbDodgeJump, refused without a side hint) and is
+## gone; the turn that follows has nothing to jump with.
+func test_a_jump_before_the_q_is_not_kept_for_the_turn() -> void:
+	var player: Player = await _climb_course()
+	var input: ScriptedInputSource = _world["input"]
+	await _climb_on_the_wall(player)
+	input.press_jump()
+	await step(1)
+	input.release_jump()
+	assert_eq(player.move_manager.current_name, Move.WALL_CLIMB, "test setup: the jump left the climb")
+	input.press_turn()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.WALLCLIMB_180_TURN_JUMP, "Q did not turn off the climb")
+	var turn: WallClimb180TurnJumpMove = player.move_manager.move_for(Move.WALLCLIMB_180_TURN_JUMP)
+	await step(5)
+	assert_false(turn.jumped(), "a jump from before the turn was carried into it")
+
 ## [ME:CONFIRMED decompile 15.5] The dodge off a climb clears the grab, vault
 ## and wall-climb switches for 0.5 s.
 func test_the_wall_climb_dodge_jump_clears_the_auto_moves_for_half_a_second() -> void:
