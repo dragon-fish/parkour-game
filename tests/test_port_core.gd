@@ -264,6 +264,46 @@ func test_an_extent_trace_meets_the_body_it_starts_against() -> void:
 	assert_almost_eq(float(pressed["time"]), 0.0, 0.01, "a box resting in a face's margin moved into it")
 	_free_ledge(world)
 
+## [ME:CONFIRMED decompile UStaticMeshComponent::LineCheck 0x00dbaef0] A hit
+## on an extracted level mesh reaches the movement traces pulled back along
+## the trace by Clamp(0.1, 0.1 / L, C / L) of its length L in uu: C = 1 uu
+## by the mesh's hulls, 4 uu by its triangles. Any other body reports the
+## exact contact.
+func test_a_level_mesh_hit_is_pulled_back_along_the_trace() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var bodies := {}
+	for kind in ["simple", "per_poly", ""]:
+		var body := StaticBody3D.new()
+		if kind != "":
+			body.set_meta(&"me_collision", kind)
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.0, 1.0, 1.0)
+		shape.shape = box
+		body.add_child(shape)
+		# Faces at z = 0, one body per lane along x, clear of the floor.
+		body.position = Vector3(float(bodies.size()) * 3.0, 3.0, -0.5)
+		get_tree().root.add_child(body)
+		bodies[kind] = body
+	await step(2)
+	var extent := Vector3(0.05, 0.05, 0.05)
+	var want := {"simple": 0.01, "per_poly": 0.04, "": 0.0}
+	for kind in bodies:
+		var start := Vector3((bodies[kind] as Node3D).position.x, 3.0, 2.05)
+		var box_hit: Dictionary = player.traces.trace(start - Vector3(0.0, 0.0, 4.0), start, extent)
+		assert_almost_eq((box_hit["location"] as Vector3).z, 0.05 + want[kind], 0.002,
+			"a box sweep 4 m long met the face of a '%s' body" % kind)
+		var line: Dictionary = player.traces.trace(start - Vector3(0.0, 0.0, 4.0), start)
+		assert_almost_eq((line["location"] as Vector3).z, want[kind], 0.002,
+			"a line 4 m long met the face of a '%s' body" % kind)
+	# Under 10 uu the pull-back is a tenth of the trace: 0.5 uu of 5.
+	var near := Vector3(0.0, 3.0, 0.03)
+	var short: Dictionary = player.traces.trace(near - Vector3(0.0, 0.0, 0.05), near)
+	assert_almost_eq((short["location"] as Vector3).z, 0.005, 0.0005, "a line 5 uu long on a hull")
+	for body in bodies.values():
+		(body as Node).queue_free()
+
 ## [ME:CONFIRMED decompile N1 §2.1] physWalking clears bJustTeleported on
 ## entry: whatever the fall before it in the same frame set, the walk rebuilds
 ## its velocity from the displacement -- here a wall the body ran into.

@@ -595,10 +595,14 @@ func _szd(player: Player, stand: float) -> float:
 ## it by up to a frame's travel); else it stands 2 cm off the face and jumps
 ## at once. W held throughout; from a hang, jump to pull up. Returns the state
 ## chain: for each state its first frame's SZD, centre to the face and speed,
-## and the highest SZD in it.
-func _obstacle(top: float, depth: float, kmh: float, jump_from: float, rim: float = 0.0) -> Array:
+## and the highest SZD in it. With `fence` the obstacle is the tutorial's wire
+## fence as its collision is built (TestWorld.wire_fence), not a box.
+func _obstacle(top: float, depth: float, kmh: float, jump_from: float, rim: float = 0.0,
+		fence: bool = false) -> Array:
 	var player: Player = await _player(Vector3(0.0, 0.0, 60.0))
-	if rim > 0.0:
+	if fence:
+		_extra.append(TestWorld.wire_fence(get_tree()))
+	elif rim > 0.0:
 		_box(Vector3(4.0, rim, AC_RIM_DEPTH), Vector3(0.0, rim * 0.5, -AC_RIM_DEPTH * 0.5))
 		_box(Vector3(4.0, top, depth - AC_RIM_DEPTH),
 			Vector3(0.0, top * 0.5, -AC_RIM_DEPTH - (depth - AC_RIM_DEPTH) * 0.5))
@@ -644,8 +648,11 @@ func _obstacle(top: float, depth: float, kmh: float, jump_from: float, rim: floa
 		await step(1)
 	return chain
 
-## [ME:CONFIRMED feel-backlog §26-§27] The barbed-wire fence, 2.64 m and very
-## narrow, at a run. The fence is at X 8.74, not the 9.40 §26 used: the
+## [ME:CONFIRMED feel-backlog §26-§27] The tutorial's wire fence, 2.64 m and
+## very narrow, at a run -- reproduced as its collision is built, a panel
+## hull 3.4 uu deep that the hand plant's top probe, LedgeFindDepth (4 uu)
+## past the face, finds only through the engine's pull-back of the wall hit
+## (MoveTraces.pulled_back()). The fence is at X 8.74, not the 9.40 §26 used: the
 ## vault's over leg ends exactly on the ledge (LedgeOffset Y 0), and that is
 ## the frame reading V 0.00 at X 8.74 -- the Falling first frame lands 1.73 m
 ## past it in the original and in the port alike. So the jump's first frame
@@ -657,7 +664,7 @@ func _obstacle(top: float, depth: float, kmh: float, jump_from: float, rim: floa
 ## 0.01 m and about a frame (11 cm of flight) on the distance; the commit is a
 ## frame of flight too, which on the vault's speed is 0.41 m/s.
 func test_the_fence_is_vaulted_as_in_the_original() -> void:
-	var chain: Array = await _obstacle(2.64, 0.1, 20.9, 2.59)
+	var chain: Array = await _obstacle(2.64, 0.0, 20.9, 2.59, 0.0, true)
 	assert_eq(_states(chain).slice(0, 3), [Move.JUMP, Move.VAULT_OVER, Move.FALLING], "the chain: %s" % [_states(chain)])
 	var jump: Dictionary = chain[0]
 	var vault: Dictionary = chain[1]

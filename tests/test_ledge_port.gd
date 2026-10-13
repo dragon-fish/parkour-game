@@ -563,6 +563,57 @@ func test_a_jump_at_a_waist_high_box_vaults_it() -> void:
 	assert_true(seen.has(Move.VAULT_OVER), "no vault in %s" % [seen])
 	assert_lt(player.global_position.z, -8.2, "the body did not end beyond the box")
 
+## Jumps at the tutorial's wire fence (TestWorld.wire_fence, near face at
+## z = -10) with W held: from a run of `seconds`, at 2.59 m off the face, or,
+## with `seconds` 0, standing 2 cm off it. Returns the moves seen and leaves
+## the body where it ends.
+func _jump_at_the_fence(player: Player, seconds: float) -> Array[StringName]:
+	_extra.append(TestWorld.wire_fence(get_tree(), -10.0))
+	await step(1)
+	var input: ScriptedInputSource = _world["input"]
+	if seconds <= 0.0:
+		player.global_position = Vector3(0.0, 0.95, -10.0 + player.default_collision_radius() + 0.02)
+		_face(player, 0.0)
+		await step(10)
+		input.hold_move(0.0, 1.0)
+	else:
+		await _run(player, seconds)
+		while player.global_position.z > -10.0 + 2.59:
+			await step(1)
+	input.press_jump()
+	var seen: Array[StringName] = []
+	for i in 240:
+		await step(1)
+		input.release_jump()
+		if not seen.has(player.move_manager.current_name):
+			seen.append(player.move_manager.current_name)
+		if player.move_manager.current_name == Move.WALKING and i > 30:
+			break
+	return seen
+
+## [ME:CONFIRMED feel-backlog §26] A running jump at a wire fence -- a panel
+## hull 3.4 uu deep, thinner than LedgeFindDepth -- vaults it and comes down
+## on the far side. The top is found only because the wall hit is pulled back
+## a uu off the hull, as the engine's is; with the exact contact the probe
+## lands past the panel, the hand plant is a wall, and the jump becomes a wall
+## climb that slides back down the near side.
+func test_a_running_jump_at_a_wire_fence_vaults_it() -> void:
+	var player: Player = await _player()
+	var seen: Array[StringName] = await _jump_at_the_fence(player, 1.0)
+	assert_true(seen.has(Move.VAULT_OVER), "no vault in %s" % [seen])
+	assert_false(seen.has(Move.WALL_CLIMB), "the jump climbed the fence: %s" % [seen])
+	assert_eq(player.move_manager.current_name, Move.WALKING, "the vault did not end walking: %s" % [seen])
+	assert_lt(player.global_position.z, -10.5, "the body did not end beyond the fence")
+
+## Pressed against the same fence, a jump with W held climbs it and vaults
+## over the top from the climb, ending on the far side.
+func test_a_standing_jump_at_a_wire_fence_climbs_and_vaults_it() -> void:
+	var player: Player = await _player()
+	var seen: Array[StringName] = await _jump_at_the_fence(player, 0.0)
+	assert_eq(seen.slice(0, 2), [Move.WALL_CLIMB, Move.VAULT_OVER], "the chain: %s" % [seen])
+	assert_eq(player.move_manager.current_name, Move.WALKING, "the vault did not end walking: %s" % [seen])
+	assert_lt(player.global_position.z, -10.2, "the body did not end beyond the fence")
+
 ## This project's presentation of a vault: the camera banks through it and is
 ## level again once it is over, and the clip's own hip lift is cancelled while
 ## the legs carry the body (Player.set_clip_lift_cancelled()).

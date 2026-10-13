@@ -99,6 +99,29 @@ static func teardown(world: Dictionary) -> void:
 	world["player"].queue_free()
 	world["floor"].queue_free()
 
+## The tutorial's wire fence, S_FenceGenericWire_01h, as its collision is
+## built: two hulls, a kerb 16 cm tall and 13.2 cm deep under a panel 2.48 m
+## tall and only 3.4 cm deep, top at 2.64 m. Marked as an extracted mesh that
+## collides by its hulls (me_collision "simple"), so traces against it are
+## pulled back as the engine's are. `width` m wide across the course, the
+## panel's near face at z = `near_z` for a body coming from +z; the kerb
+## stands 4.9 cm proud of it on that side, as on the side the tutorial's
+## runner meets. Placed before it enters the tree; the caller frees it.
+static func wire_fence(tree: SceneTree, near_z: float = 0.0, width: float = 4.0) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.set_meta(&"me_collision", "simple")
+	body.position.z = near_z
+	for part in [[Vector3(width, 2.48, 0.034), Vector3(0.0, 0.16 + 1.24, -0.017)],
+			[Vector3(width, 0.16, 0.132), Vector3(0.0, 0.08, 0.049 - 0.066)]]:
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = part[0]
+		shape.shape = box
+		shape.position = part[1]
+		body.add_child(shape)
+	tree.root.add_child(body)
+	return body
+
 ## Builds an in-memory PackedScene standing in for a real character body, for
 ## tests that need Player.body_scene to have SOMETHING attached without
 ## depending on the owner's licensed, untracked model (see JOB 1's report --

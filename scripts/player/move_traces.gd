@@ -63,8 +63,14 @@ func trace(end: Vector3, start: Vector3, extent: Vector3 = Vector3.ZERO) -> Dict
 	var hit: Dictionary = pawn.phys.box_trace(end, start, sweep_extent)
 	# A blocked sweep whose rest query names nothing (a start inside geometry
 	# among them) is still a hit.
-	return {"hit": hit["collider"] != null or float(hit["time"]) < 1.0, "time": hit["time"],
-		"location": hit["position"], "normal": hit["normal"], "actor": hit["collider"]}
+	var blocked: bool = hit["collider"] != null or float(hit["time"]) < 1.0
+	var time: float = hit["time"]
+	var location: Vector3 = hit["position"]
+	if blocked:
+		time = pulled_back(time, end, start, hit["collider"])
+		location = start + (end - start) * time
+	return {"hit": blocked, "time": time, "location": location, "normal": hit["normal"],
+		"actor": hit["collider"]}
 
 func _line(end: Vector3, start: Vector3) -> Dictionary:
 	var space: PhysicsDirectSpaceState3D = pawn.get_world_3d().direct_space_state
@@ -77,8 +83,46 @@ func _line(end: Vector3, start: Vector3) -> Dictionary:
 	var length: float = (end - start).length()
 	var position: Vector3 = hit["position"]
 	var time: float = (position - start).length() / length if length > 0.0 else 0.0
-	return {"hit": true, "time": time, "location": position, "normal": hit["normal"],
+	time = pulled_back(time, end, start, hit["collider"])
+	return {"hit": true, "time": time, "location": start + (end - start) * time, "normal": hit["normal"],
 		"actor": hit["collider"]}
+
+## The engine's pull-back of a hit on a level mesh. [ME:CONFIRMED decompile
+## UStaticMeshComponent::LineCheck 0x00dbaef0] Every hit a static mesh
+## reports is moved back along the trace before the caller sees it: Time -=
+## Clamp(0.1, 0.1 / L, C / L), L the trace's length in uu, C 1 uu when the
+## mesh answered by its hulls and 4 uu when by its triangles; Location is
+## Start + (End - Start) Time. So a sweep stops a whole uu short of a hull.
+## DO NOT drop it as rounding: FindLedgeEx looks for a top LedgeFindDepth (4
+## uu) past the face it was given, and with the uu back that is 3 uu past the
+## real face -- inside a 3.4 uu wire-fence panel, which the original vaults
+## and the exact contact misses, handing a running jump to a wall climb that
+## slides down the fence.
+##
+## A line answers by the hulls too: UseSimpleLineCollision is set by default
+## (packages store only its clearing, on 67 meshes, whose lines would take
+## the triangles; the extraction does not keep them apart). Only the extracted
+## level meshes carry the original's collision class (me_collision). Every
+## other body -- BSP, whiteboxes, this project's own levels -- reports the
+## exact contact: the BSP's line check was not read.
+static func pulled_back(time: float, end: Vector3, start: Vector3, actor: Object) -> float:
+	if actor == null or not actor.has_meta(&"me_collision"):
+		return time
+	var cap: float
+	match actor.get_meta(&"me_collision"):
+		"simple":
+			cap = 1.0
+		"per_poly":
+			cap = 4.0
+		_:
+			return time
+	var length: float = (end - start).length() / UU
+	if length <= 0.0:
+		return time
+	# Clamp(0.1, 0.1 / L, C / L) as the engine's Clamp(X, Min, Max): Min
+	# first, then Max.
+	var back: float = minf(maxf(0.1, 0.1 / length), cap / length)
+	return clampf(time - back, 0.0, 1.0)
 
 ## TdMove.MovementTrace(out HitLocation, out HitNormal, End, Start, Extent).
 ## The flags only choose between a closest and an any hit, which a single
