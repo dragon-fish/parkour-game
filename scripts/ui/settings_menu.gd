@@ -14,6 +14,11 @@ extends Control
 # 保存设置 is pressed. 取消 and 默认 both leave the file untouched; 默认 only
 # resets the in-memory copy and the on-screen controls, it does NOT save
 # (spec: "不落盘").
+#
+# Key bindings are part of that same working copy (`bindings`): a rebind takes
+# effect on 保存设置, 取消 throws it away, 默认 and 恢复默认按键 reset it without
+# saving. The left column scrolls, because the binding section does not fit
+# under the other rows.
 
 signal closed
 
@@ -64,6 +69,14 @@ const _ROWS := [
 const _DEFAULT_DESCRIPTION := "将鼠标移到左侧设置项上查看说明。"
 const _ROW_HEIGHT := 40.0
 
+const _BINDING_HELP := "点击一个按键槽位，再按下新的按键、鼠标按键或滚动滚轮。Esc 取消，Delete / Backspace 清空该槽位。"
+const _CAPTURE_PROMPT := "请按下按键…"
+const _CAPTURE_HELP := "按下键盘按键、鼠标按键或滚动滚轮。Esc 取消，Delete / Backspace 清空该槽位。"
+const _RESERVED_HELP := "「%s」是保留按键，不能绑定。请换一个按键，或按 Esc 取消。"
+const _EMPTY_SLOT := "—"
+const _CONFLICT_QUESTION := "此按键已绑定「%s」，是否取代？"
+const _SLOT_COLOR := Color(0.55, 0.62, 0.72)
+
 var _working: Dictionary
 ## The display-change probation (see _on_save_pressed): the dialog, its
 ## countdown, and the settings to fall back to.
@@ -83,6 +96,13 @@ var _stepper_buttons: Dictionary = {}
 var _sliders: Dictionary = {}
 ## key -> Label, the sliders' current-value display.
 var _slider_value_labels: Dictionary = {}
+## action id -> [primary Button, secondary Button], the binding slots.
+var _binding_buttons: Dictionary = {}
+## The slot waiting for an input: {action, slot}, or {} when none is.
+var _capture: Dictionary = {}
+## The conflict being asked about: {action, slot, binding, holder}, or {}.
+var _conflict: Dictionary = {}
+var _conflict_dialog: Control
 
 func _ready() -> void:
 	theme = MeTheme.ui_theme()
@@ -97,6 +117,8 @@ func _ready() -> void:
 ## a previous visit's 取消/保存设置 is never stale on reopen.
 func reload() -> void:
 	_working = SettingsStore.load_settings()
+	_capture = {}
+	_close_conflict()
 	_refresh_controls()
 
 func _build_ui() -> void:
@@ -134,13 +156,21 @@ func _build_ui() -> void:
 	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(inner)
 
+	# The left column scrolls: the binding section runs well past the panel.
+	# Its height stops short of the bottom buttons' row, which sits to the
+	# right of it anyway.
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	scroll.position = Vector2(56.0, 40.0)
+	scroll.size = Vector2(700.0, 600.0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	inner.add_child(scroll)
+
 	var rows_box := VBoxContainer.new()
-	rows_box.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	rows_box.position = Vector2(56.0, 56.0)
 	rows_box.custom_minimum_size = Vector2(640.0, 0.0)
 	rows_box.add_theme_constant_override("separation", 26.0)
 	rows_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	inner.add_child(rows_box)
+	scroll.add_child(rows_box)
 
 	_description_label = Label.new()
 	_description_label.text = _DEFAULT_DESCRIPTION
@@ -181,6 +211,8 @@ func _build_ui() -> void:
 			_build_stepper(line, key, desc)
 		else:
 			_build_slider(line, key, desc)
+
+	_build_binding_section()
 
 	var buttons := HBoxContainer.new()
 	buttons.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -267,6 +299,9 @@ func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 			slider.step = 0.01
 
 	MeTheme.dress_slider(slider)
+	# The page scrolls now; a wheel notch over a slider must scroll the page,
+	# not change the value the pointer happened to rest on.
+	slider.scrollable = false
 
 	slider.mouse_entered.connect(_show_description.bind(desc))
 	slider.value_changed.connect(_on_slider_changed.bind(key))
@@ -279,6 +314,68 @@ func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 	MeTheme.fit_shadow(value_label)
 	line.add_child(value_label)
 	_slider_value_labels[key] = value_label
+
+## 按键绑定: a heading with 恢复默认按键 beside it, then one row per
+## InputBindings action -- its name and its two slots.
+func _build_binding_section() -> void:
+	var heading_line := HBoxContainer.new()
+	heading_line.add_theme_constant_override("separation", 18.0)
+	_rows_parent.add_child(heading_line)
+
+	var heading := Label.new()
+	heading.text = "按键绑定"
+	heading.custom_minimum_size = Vector2(140.0, _ROW_HEIGHT)
+	heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	heading.add_theme_font_size_override("font_size", 26)
+	heading.add_theme_color_override("font_color", Color(0.55, 0.62, 0.72))
+	MeTheme.fit_shadow(heading)
+	heading.mouse_filter = Control.MOUSE_FILTER_STOP
+	heading.mouse_entered.connect(_show_description.bind(_BINDING_HELP))
+	heading_line.add_child(heading)
+
+	var reset := _make_bottom_button("恢复默认按键", _on_reset_bindings_pressed)
+	reset.custom_minimum_size = Vector2(200.0, _ROW_HEIGHT)
+	reset.mouse_entered.connect(_show_description.bind("把所有按键恢复为默认值。保存设置后生效。"))
+	heading_line.add_child(reset)
+
+	for action in InputBindings.ACTIONS:
+		var desc: String = "%s\n\n%s" % [action.desc, _BINDING_HELP]
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 18.0)
+		_rows_parent.add_child(line)
+
+		var label := Label.new()
+		label.text = action.label
+		label.custom_minimum_size = Vector2(140.0, _ROW_HEIGHT)
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
+		MeTheme.fit_shadow(label)
+		label.add_theme_font_size_override("font_size", 20)
+		label.mouse_filter = Control.MOUSE_FILTER_STOP
+		label.mouse_entered.connect(_show_description.bind(desc))
+		line.add_child(label)
+
+		var slots: Array[Button] = []
+		for slot in InputBindings.SLOTS:
+			var button := Button.new()
+			button.custom_minimum_size = Vector2(200.0, _ROW_HEIGHT)
+			button.add_theme_font_size_override("font_size", 18)
+			button.add_theme_color_override("font_color", Color.WHITE)
+			button.add_theme_color_override("font_hover_color", Color.WHITE)
+			button.add_theme_color_override("font_pressed_color", Color.WHITE)
+			button.add_theme_color_override("font_focus_color", Color.WHITE)
+			# ON RELEASE, which is Button's default but is load-bearing here:
+			# the capture then starts after the click that asked for it has
+			# finished, and the next press is the binding -- never that click.
+			button.action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
+			# Keyboard focus would let Enter or Space re-trigger a slot once
+			# capture ends, and Space is a key a player binds.
+			button.focus_mode = Control.FOCUS_NONE
+			button.pressed.connect(_begin_capture.bind(action.id, slot))
+			button.mouse_entered.connect(_show_description.bind(desc))
+			line.add_child(button)
+			slots.append(button)
+		_binding_buttons[action.id] = slots
 
 ## An action row: one red button, no value, nothing saved. It runs the moment
 ## it is pressed -- 保存设置 has nothing to do with it.
@@ -318,6 +415,144 @@ func _unhandled_input(event: InputEvent) -> void:
 			and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
 		_on_cancel_pressed()
 		get_viewport().set_input_as_handled()
+
+## Binding capture and the conflict dialog take input in _input(), AHEAD of
+## the GUI and of every _unhandled_input(): the input being captured must do
+## nothing else -- a click must not press a button under the pointer, a wheel
+## notch must not scroll the page, and Esc must cancel the capture, not close
+## this page (_unhandled_input above) or the pause menu (PauseUi).
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	if not _conflict.is_empty():
+		# The dialog's own buttons take the mouse; Esc answers 取消.
+		if event is InputEventKey:
+			var key_event := event as InputEventKey
+			if key_event.pressed and not key_event.echo \
+					and key_event.physical_keycode == KEY_ESCAPE:
+				_close_conflict()
+			get_viewport().set_input_as_handled()
+		return
+	if _capture.is_empty():
+		return
+	if event is InputEventKey:
+		get_viewport().set_input_as_handled()
+		var key_event := event as InputEventKey
+		if not key_event.pressed or key_event.echo:
+			return
+		match key_event.physical_keycode:
+			KEY_ESCAPE:
+				_end_capture()
+			KEY_DELETE, KEY_BACKSPACE:
+				_assign(_capture.action, _capture.slot, {})
+				_end_capture()
+			_:
+				_offer(InputBindings.from_event(key_event))
+	elif event is InputEventMouseButton:
+		# Releases too: the release of a captured click must not land on
+		# whatever is under the pointer.
+		get_viewport().set_input_as_handled()
+		if (event as InputEventMouseButton).pressed:
+			_offer(InputBindings.from_event(event))
+
+func _begin_capture(action: String, slot: int) -> void:
+	_capture = {action = action, slot = slot}
+	_show_description(_CAPTURE_HELP)
+	_refresh_bindings()
+
+func _end_capture() -> void:
+	_capture = {}
+	_refresh_bindings()
+
+## The captured input, applied to the slot being captured: assigned, refused
+## as reserved, or put to the player as a conflict.
+func _offer(binding: Dictionary) -> void:
+	if binding.is_empty():
+		return
+	if InputBindings.is_reserved(binding):
+		# Stays in capture: the player was asked for a key and has not given
+		# one that can be used.
+		_show_description(_RESERVED_HELP % InputBindings.binding_label(binding))
+		return
+	var action: String = _capture.action
+	var slot: int = _capture.slot
+	var holder := InputBindings.owner_of(_working.bindings, binding)
+	if holder == action:
+		# Already this action's, in this slot or the other: nothing to change.
+		_end_capture()
+		return
+	if holder.is_empty():
+		_assign(action, slot, binding)
+		_end_capture()
+		return
+	_ask_to_replace(action, slot, binding, holder)
+
+func _assign(action: String, slot: int, binding: Dictionary) -> void:
+	_working.bindings[action][slot] = binding.duplicate()
+
+## The conflict rule: the input already belongs to another action. 确定 takes
+## it from that action and gives it to this one; 取消 changes nothing at all.
+func _ask_to_replace(action: String, slot: int, binding: Dictionary, holder: String) -> void:
+	_close_conflict()
+	_capture = {}
+	_conflict = {action = action, slot = slot, binding = binding, holder = holder}
+	_conflict_dialog = MeTheme.confirm_dialog(
+		_CONFLICT_QUESTION % InputBindings.action_label(holder), "取消", "确定",
+		_on_conflict_confirmed)
+	# 取消 and a click on the backdrop both just hide the overlay (MeTheme's
+	# own behaviour); hidden is answered here, as a refusal.
+	_conflict_dialog.visibility_changed.connect(func() -> void:
+		if _conflict_dialog != null and not _conflict_dialog.visible:
+			_close_conflict())
+	add_child(_conflict_dialog)
+	_refresh_bindings()
+
+func _on_conflict_confirmed() -> void:
+	if _conflict.is_empty():
+		return
+	var slots: Array = _working.bindings[_conflict.holder]
+	for i in slots.size():
+		if InputBindings.same(slots[i], _conflict.binding):
+			slots[i] = {}
+	_assign(_conflict.action, _conflict.slot, _conflict.binding)
+	_close_conflict()
+
+## Ends the conflict, whatever its answer was: the dialog goes away and the
+## slots show the working copy as it now stands.
+func _close_conflict() -> void:
+	_conflict = {}
+	if _conflict_dialog != null and is_instance_valid(_conflict_dialog):
+		var dialog := _conflict_dialog
+		_conflict_dialog = null
+		dialog.queue_free()
+	_conflict_dialog = null
+	if not _binding_buttons.is_empty():
+		_refresh_bindings()
+
+## 恢复默认按键: the bindings back to their defaults, and nothing else -- NOT
+## saved until 保存设置, like 默认.
+func _on_reset_bindings_pressed() -> void:
+	_capture = {}
+	_working.bindings = InputBindings.defaults()
+	_refresh_bindings()
+
+func _refresh_bindings() -> void:
+	for action_id in _binding_buttons:
+		var buttons: Array = _binding_buttons[action_id]
+		for slot in buttons.size():
+			var button: Button = buttons[slot]
+			var capturing: bool = not _capture.is_empty() \
+				and _capture.action == action_id and _capture.slot == slot
+			var text := InputBindings.binding_label(_working.bindings[action_id][slot])
+			if capturing:
+				text = _CAPTURE_PROMPT
+			elif text.is_empty():
+				text = _EMPTY_SLOT
+			button.text = text
+			var bg: Color = MeTheme.BRAND_RED if capturing else _SLOT_COLOR
+			button.add_theme_stylebox_override("normal", MeTheme.button_style(bg))
+			button.add_theme_stylebox_override("hover", MeTheme.button_style(bg.lightened(0.12)))
+			button.add_theme_stylebox_override("pressed", MeTheme.button_style(bg.darkened(0.12)))
 
 func _show_description(desc: String) -> void:
 	_description_label.text = desc
@@ -482,6 +717,8 @@ func _sync_window_memory() -> void:
 ## was ever saved) -- the file itself is never touched.
 func _on_cancel_pressed() -> void:
 	_working = SettingsStore.load_settings()
+	_capture = {}
+	_close_conflict()
 	closed.emit()
 
 ## Nice-to-have: Arena (the only level type so far) exports its Player
@@ -518,6 +755,7 @@ func _refresh_controls() -> void:
 		_refresh_slider_label(key)
 
 	_update_window_size_enabled()
+	_refresh_bindings()
 
 func _refresh_slider_label(key: String) -> void:
 	var label: Label = _slider_value_labels[key]
