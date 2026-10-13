@@ -36,7 +36,38 @@ static func ui_theme() -> Theme:
 			_ui_theme.set_constant("shadow_offset_x", cls, TEXT_SHADOW_OFFSET)
 			_ui_theme.set_constant("shadow_offset_y", cls, TEXT_SHADOW_OFFSET)
 			_ui_theme.set_constant("shadow_outline_size", cls, 0)
+		_dress_scroll_bars(_ui_theme)
 	return _ui_theme
+
+## Scroll bars in the menus' own vocabulary: a hairline track in the text
+## blue and a flat red bar, square-cornered like every other shape here. The
+## engine default is a rounded grey pill that belongs to no screen in this game.
+static func _dress_scroll_bars(t: Theme) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(TEXT_BLUE, 0.12)
+	track.content_margin_left = 3.0
+	track.content_margin_right = 3.0
+	var focus := StyleBoxEmpty.new()
+	var empty_icon := ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RGBA8))
+	for cls in ["VScrollBar", "HScrollBar"]:
+		t.set_stylebox("scroll", cls, track)
+		t.set_stylebox("scroll_focus", cls, track)
+		t.set_stylebox("focus", cls, focus)
+		t.set_stylebox("grabber", cls, _scroll_grabber(Color(BRAND_RED, 0.75)))
+		t.set_stylebox("grabber_highlight", cls, _scroll_grabber(BRAND_RED))
+		t.set_stylebox("grabber_pressed", cls, _scroll_grabber(BRAND_RED.darkened(0.15)))
+		for icon in ["increment", "increment_highlight", "increment_pressed",
+				"decrement", "decrement_highlight", "decrement_pressed"]:
+			t.set_icon(icon, cls, empty_icon)
+
+static func _scroll_grabber(color: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.content_margin_left = 3.0
+	box.content_margin_right = 3.0
+	box.content_margin_top = 12.0
+	box.content_margin_bottom = 12.0
+	return box
 
 ## THE OVER-ANYTHING SPEC: white text in a black outline, no shadow.
 ##
