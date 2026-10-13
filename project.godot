@@ -52,6 +52,7 @@ theme/custom_font="res://assets/fonts/noto_sans_sc.tres"
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=4
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
 environment/volumetric_fog/volume_size=128
