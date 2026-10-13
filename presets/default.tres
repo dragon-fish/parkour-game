@@ -25,6 +25,34 @@
 [ext_resource type="Script" uid="uid://b1l80ab3gfk0d" path="res://scripts/player/config/moves/balance_config.gd" id="24_b1a4c"]
 [ext_resource type="Script" uid="uid://r810qxlyg1h6" path="res://scripts/player/config/moves/ledge_walk_config.gd" id="25_lw81h"]
 [ext_resource type="Script" uid="uid://cld5x8kdxxca2" path="res://scripts/player/config/moves/spring_board_config.gd" id="26_sprbd"]
+[ext_resource type="Script" uid="uid://dmdqibfycvqrl" path="res://scripts/player/config/moves/lay_on_ground_config.gd" id="cfg_lay_on_ground"]
+[ext_resource type="Script" uid="uid://yoq42jni4yp7" path="res://scripts/player/config/moves/ramp_slide_config.gd" id="cfg_ramp_slide"]
+[ext_resource type="Script" uid="uid://db3mssfl77i6f" path="res://scripts/player/config/moves/turn_180_in_air_config.gd" id="cfg_turn180_in_air"]
+[ext_resource type="Script" uid="uid://ctyhuxacr4j7o" path="res://scripts/player/config/moves/into_zipline_config.gd" id="cfg_into_zipline"]
+[ext_resource type="Script" uid="uid://cujurrfl6hjlp" path="res://scripts/player/config/moves/swing_jump_config.gd" id="cfg_swing_jump"]
+[ext_resource type="Script" uid="uid://cb0wn0bnrxmvy" path="res://scripts/player/config/moves/barge_config.gd" id="cfg_barge"]
+[ext_resource type="Script" uid="uid://dfb3yo2y4tc8m" path="res://scripts/player/config/moves/air_barge_config.gd" id="cfg_air_barge"]
+[ext_resource type="Script" uid="uid://djb24tkloaik8" path="res://scripts/player/config/moves/melee_config.gd" id="cfg_melee"]
+[ext_resource type="Script" uid="uid://dxuswdyjfam24" path="res://scripts/player/config/moves/melee_air_config.gd" id="cfg_melee_air"]
+[ext_resource type="Script" uid="uid://yqay3laao5b0" path="res://scripts/player/config/moves/melee_slide_config.gd" id="cfg_melee_slide"]
+[ext_resource type="Script" uid="uid://dwwea8k61y4k5" path="res://scripts/player/config/moves/melee_crouch_config.gd" id="cfg_melee_crouch"]
+[ext_resource type="Script" uid="uid://cyacirqn3jjln" path="res://scripts/player/config/moves/melee_vault_config.gd" id="cfg_melee_vault"]
+[ext_resource type="Script" uid="uid://cuwfi7nv67t8j" path="res://scripts/player/config/moves/melee_air_above_config.gd" id="cfg_melee_air_above"]
+[ext_resource type="Script" uid="uid://dgvf57ki0du5e" path="res://scripts/player/config/moves/interact_config.gd" id="cfg_interact"]
+[ext_resource type="Script" uid="uid://h70tknxjsq4f" path="res://scripts/player/config/moves/auto_step_up_config.gd" id="cfg_auto_step_up"]
+[ext_resource type="Script" uid="uid://c63ltuo128ded" path="res://scripts/player/config/moves/step_up_config.gd" id="cfg_step_up"]
+[ext_resource type="Script" uid="uid://cqekdx1fw0g7a" path="res://scripts/player/config/moves/grab_pull_up_config.gd" id="cfg_grab_pull_up"]
+[ext_resource type="Script" uid="uid://dybuc7aovt43o" path="res://scripts/player/config/moves/grab_jump_config.gd" id="cfg_grab_jump"]
+[ext_resource type="Script" uid="uid://bcvlwtrrg5t2b" path="res://scripts/player/config/moves/grab_transfer_config.gd" id="cfg_grab_transfer"]
+[ext_resource type="Script" uid="uid://bljeevy13vey1" path="res://scripts/player/config/moves/into_climb_config.gd" id="cfg_into_climb"]
+[ext_resource type="Script" uid="uid://c4wj7uax2g4yd" path="res://scripts/player/config/moves/climb_config.gd" id="cfg_climb"]
+[ext_resource type="Script" uid="uid://j1lb7yinqrr8" path="res://scripts/player/config/moves/dodge_jump_config.gd" id="cfg_dodge_jump"]
+[ext_resource type="Script" uid="uid://cqwnk0pbrw7yh" path="res://scripts/player/config/moves/wallrun_dodge_jump_config.gd" id="cfg_wallrun_dodge_jump"]
+[ext_resource type="Script" uid="uid://wj3d6yfeegw1" path="res://scripts/player/config/moves/wall_climb_dodge_jump_config.gd" id="cfg_wall_climb_dodge_jump"]
+[ext_resource type="Script" uid="uid://85g2nys1uaej" path="res://scripts/player/config/moves/wall_climb_180_turn_jump_config.gd" id="cfg_wall_climb180_turn_jump"]
+[ext_resource type="Script" uid="uid://cldmbfnhmxhju" path="res://scripts/player/config/moves/melee_wallrun_config.gd" id="cfg_melee_wallrun"]
+[ext_resource type="Script" uid="uid://bgm3ua2fbr8xt" path="res://scripts/player/config/moves/vertigo_config.gd" id="cfg_vertigo"]
+[ext_resource type="Script" uid="uid://mk71yn5ipks0" path="res://scripts/player/config/moves/stumble_config.gd" id="cfg_stumble"]
 
 [sub_resource type="Resource" id="Resource_b1a4c"]
 script = ExtResource("24_b1a4c")
@@ -154,6 +182,93 @@ script = ExtResource("22_ebalx")
 [sub_resource type="Resource" id="Resource_8h1kf"]
 script = ExtResource("23_kaqig")
 
+[sub_resource type="Resource" id="Resource_lay_on_ground"]
+script = ExtResource("cfg_lay_on_ground")
+
+[sub_resource type="Resource" id="Resource_ramp_slide"]
+script = ExtResource("cfg_ramp_slide")
+
+[sub_resource type="Resource" id="Resource_turn_180_in_air"]
+script = ExtResource("cfg_turn180_in_air")
+
+[sub_resource type="Resource" id="Resource_into_zipline"]
+script = ExtResource("cfg_into_zipline")
+
+[sub_resource type="Resource" id="Resource_swing_jump"]
+script = ExtResource("cfg_swing_jump")
+
+[sub_resource type="Resource" id="Resource_barge"]
+script = ExtResource("cfg_barge")
+
+[sub_resource type="Resource" id="Resource_air_barge"]
+script = ExtResource("cfg_air_barge")
+
+[sub_resource type="Resource" id="Resource_melee"]
+script = ExtResource("cfg_melee")
+
+[sub_resource type="Resource" id="Resource_melee_air"]
+script = ExtResource("cfg_melee_air")
+
+[sub_resource type="Resource" id="Resource_melee_slide"]
+script = ExtResource("cfg_melee_slide")
+
+[sub_resource type="Resource" id="Resource_melee_crouch"]
+script = ExtResource("cfg_melee_crouch")
+
+[sub_resource type="Resource" id="Resource_melee_vault"]
+script = ExtResource("cfg_melee_vault")
+
+[sub_resource type="Resource" id="Resource_melee_air_above"]
+script = ExtResource("cfg_melee_air_above")
+
+[sub_resource type="Resource" id="Resource_interact"]
+script = ExtResource("cfg_interact")
+
+[sub_resource type="Resource" id="Resource_auto_step_up"]
+script = ExtResource("cfg_auto_step_up")
+
+[sub_resource type="Resource" id="Resource_step_up"]
+script = ExtResource("cfg_step_up")
+
+[sub_resource type="Resource" id="Resource_grab_pull_up"]
+script = ExtResource("cfg_grab_pull_up")
+
+[sub_resource type="Resource" id="Resource_grab_jump"]
+script = ExtResource("cfg_grab_jump")
+
+[sub_resource type="Resource" id="Resource_grab_transfer"]
+script = ExtResource("cfg_grab_transfer")
+
+[sub_resource type="Resource" id="Resource_into_climb"]
+script = ExtResource("cfg_into_climb")
+
+[sub_resource type="Resource" id="Resource_climb"]
+script = ExtResource("cfg_climb")
+
+[sub_resource type="Resource" id="Resource_dodge_jump"]
+script = ExtResource("cfg_dodge_jump")
+
+[sub_resource type="Resource" id="Resource_wallrun_dodge_jump"]
+script = ExtResource("cfg_wallrun_dodge_jump")
+
+[sub_resource type="Resource" id="Resource_wall_climb_dodge_jump"]
+script = ExtResource("cfg_wall_climb_dodge_jump")
+
+[sub_resource type="Resource" id="Resource_wall_climb_180_turn_jump"]
+script = ExtResource("cfg_wall_climb180_turn_jump")
+
+[sub_resource type="Resource" id="Resource_melee_wallrun"]
+script = ExtResource("cfg_melee_wallrun")
+
+[sub_resource type="Resource" id="Resource_vertigo"]
+script = ExtResource("cfg_vertigo")
+
+[sub_resource type="Resource" id="Resource_stumble"]
+script = ExtResource("cfg_stumble")
+
+[sub_resource type="Resource" id="Resource_stumble_hard"]
+script = ExtResource("cfg_stumble")
+
 [resource]
 script = ExtResource("12_jo6uy")
 pawn = SubResource("Resource_oya74")
@@ -165,8 +280,10 @@ falling = SubResource("Resource_ixdq6")
 fall_uncontrolled = SubResource("Resource_2u5l8")
 soft_landing = SubResource("Resource_p2sio")
 landing = SubResource("Resource_y0evl")
+lay_on_ground = SubResource("Resource_lay_on_ground")
 skill_roll = SubResource("Resource_431c4")
 slide = SubResource("Resource_tj7hg")
+ramp_slide = SubResource("Resource_ramp_slide")
 crouch = SubResource("Resource_oomka")
 speed_vault = SubResource("Resource_mm3rp")
 into_grab = SubResource("Resource_4mpbc")
@@ -174,9 +291,36 @@ grab = SubResource("Resource_hac3t")
 wall_run = SubResource("Resource_ieasd")
 wall_climb = SubResource("Resource_e2xtk")
 turn_180 = SubResource("Resource_uqmby")
+turn_180_in_air = SubResource("Resource_turn_180_in_air")
 wallrun_jump = SubResource("Resource_ix5t5")
+into_zipline = SubResource("Resource_into_zipline")
 zipline = SubResource("Resource_8h1kf")
 swing = SubResource("Resource_6r03e")
+swing_jump = SubResource("Resource_swing_jump")
+barge = SubResource("Resource_barge")
+air_barge = SubResource("Resource_air_barge")
+melee = SubResource("Resource_melee")
+melee_air = SubResource("Resource_melee_air")
+melee_slide = SubResource("Resource_melee_slide")
+melee_crouch = SubResource("Resource_melee_crouch")
+melee_vault = SubResource("Resource_melee_vault")
+melee_air_above = SubResource("Resource_melee_air_above")
+interact = SubResource("Resource_interact")
 balance = SubResource("Resource_b1a4c")
 ledge_walk = SubResource("Resource_lw81h")
+auto_step_up = SubResource("Resource_auto_step_up")
+step_up = SubResource("Resource_step_up")
+grab_pull_up = SubResource("Resource_grab_pull_up")
+grab_jump = SubResource("Resource_grab_jump")
+grab_transfer = SubResource("Resource_grab_transfer")
+into_climb = SubResource("Resource_into_climb")
+climb = SubResource("Resource_climb")
 spring_board = SubResource("Resource_sprbd")
+dodge_jump = SubResource("Resource_dodge_jump")
+wallrun_dodge_jump = SubResource("Resource_wallrun_dodge_jump")
+wall_climb_dodge_jump = SubResource("Resource_wall_climb_dodge_jump")
+wall_climb_180_turn_jump = SubResource("Resource_wall_climb_180_turn_jump")
+melee_wallrun = SubResource("Resource_melee_wallrun")
+vertigo = SubResource("Resource_vertigo")
+stumble = SubResource("Resource_stumble")
+stumble_hard = SubResource("Resource_stumble_hard")

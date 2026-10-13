@@ -93,3 +93,59 @@ func test_the_default_preset_keeps_the_ported_ini_values_of_crouch_and_slide() -
 		"the default preset overrides Crouch's SpeedModifier")
 	assert_almost_eq(preset.slide.redo_move_time, SlideConfig.new().redo_move_time, 0.0001,
 		"the default preset gives Slide a RedoMoveTime the original does not have")
+
+## Every config sub-resource a committed MovementConfig preset carries must be
+## WRITTEN in the file, not left to the script's `= XxxConfig.new()` default.
+##
+## The default only exists at runtime. The exporter converts text resources to
+## binary inside the editor, where MovementConfig is not a tool script and its
+## initialisers never run: a field the .tres leaves out is read as null there
+## and written into the shipped .res as an explicit null. Loaded from source the
+## same preset is complete, so nothing but an exported build shows it -- and
+## there the move's cfg is null: no zipline catch, no pull-up, no jump from a
+## hang. DO NOT fix a failure here by filling nulls in at load time; add the
+## missing field to the preset as a value-less sub-resource (`script =` only),
+## which keeps the move's own defaults in charge.
+func test_every_preset_writes_out_every_config_sub_resource() -> void:
+	var fields: Array[String] = []
+	for prop in MovementConfig.new().get_property_list():
+		if prop.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and prop.type == TYPE_OBJECT:
+			fields.append(prop.name)
+	assert_gt(fields.size(), 30, "test setup: MovementConfig's fields were not found")
+	var presets: Array[String] = _movement_presets("res://presets")
+	assert_false(presets.is_empty(), "test setup: no MovementConfig preset under res://presets")
+	for path in presets:
+		var written: Dictionary = _resource_section_keys(FileAccess.get_file_as_string(path))
+		var missing: Array[String] = []
+		for field in fields:
+			if not written.has(field):
+				missing.append(field)
+		assert_eq(missing, [] as Array[String],
+			"%s leaves these to the script default, so an export ships them null: %s" % [path, missing])
+
+static func _movement_presets(dir: String) -> Array[String]:
+	var out: Array[String] = []
+	for sub in DirAccess.get_directories_at(dir):
+		out.append_array(_movement_presets(dir.path_join(sub)))
+	for file in DirAccess.get_files_at(dir):
+		if not file.ends_with(".tres"):
+			continue
+		var path: String = dir.path_join(file)
+		var text: String = FileAccess.get_file_as_string(path)
+		if text.get_slice("\n", 0).contains("script_class=\"MovementConfig\""):
+			out.append(path)
+	return out
+
+## The property names a text resource's own [resource] section assigns.
+static func _resource_section_keys(text: String) -> Dictionary:
+	var keys := {}
+	var at: int = text.find("\n[resource]\n")
+	if at < 0:
+		return keys
+	for line in text.substr(at + 12).split("\n"):
+		if line.begins_with("["):
+			break
+		var eq: int = line.find(" = ")
+		if eq > 0:
+			keys[line.substr(0, eq)] = true
+	return keys
