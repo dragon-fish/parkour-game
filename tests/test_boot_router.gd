@@ -23,12 +23,14 @@ func after_all() -> void:
 func before_each() -> void:
 	_delete_progress_file()
 	ProgressStore.replay_requested = false
+	ProgressStore.tutorial_enabled = true
 
 func after_each() -> void:
 	_delete_progress_file()
 	# Session-only and static, so unlike the file it survives a delete: left
 	# true it would send every later test down the tutorial branch.
 	ProgressStore.replay_requested = false
+	ProgressStore.tutorial_enabled = false
 
 func _delete_progress_file() -> void:
 	if FileAccess.file_exists(ProgressStore.path):
@@ -139,3 +141,9 @@ func test_the_router_holds_no_mark_of_its_own() -> void:
 	var marks: Array[Node] = router.find_children("*", "TextureRect", true, false)
 	assert_eq(marks.size(), 0,
 		"the router draws a mark of its own, so the logo flashes across the swap")
+
+func test_with_the_tutorial_switched_off_a_first_launch_opens_the_menu() -> void:
+	ProgressStore.tutorial_enabled = false
+	ProgressStore.replay_requested = true
+	assert_eq(await _routed_to(), BootRouter.MAIN_MENU_SCENE,
+		"a launch went into the tutorial while it is switched off")

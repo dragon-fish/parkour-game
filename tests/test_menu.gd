@@ -83,6 +83,9 @@ func after_all() -> void:
 func before_each() -> void:
 	_delete_settings_file()
 	_delete_progress_file()
+	# The tutorial flow is what these tests are about; the shipped switch may be
+	# off while the tutorial is unfinished.
+	ProgressStore.tutorial_enabled = true
 
 func after_each() -> void:
 	_delete_settings_file()
@@ -91,6 +94,7 @@ func after_each() -> void:
 	# progress.cfg: left true by a test that failed mid-way it would send every
 	# later front-door test down the tutorial branch.
 	ProgressStore.replay_requested = false
+	ProgressStore.tutorial_enabled = false
 	# Unconditional pause/mouse-mode cleanup, run for EVERY test in this file
 	# (not just the PauseUi ones below) so a failed assertion mid-test never
 	# leaves the tree paused for every suite that runs after this one -- a
@@ -1000,3 +1004,31 @@ func test_every_url_in_the_credits_becomes_a_link_that_stops_before_a_fullwidth_
 	var text: String = screen._compose_bbcode()
 	assert_true(text.contains("[url]https://am23ti.booth.pm/items/4321056[/url]"))
 	assert_true(text.contains("[url]https://github.com/dragon-fish/parkour-game[/url]"))
+
+
+# ---------------------------------------------------------------------------
+# The tutorial switched off (ProgressStore.tutorial_enabled): the menu is the
+# front door from the first launch, so nothing may point at the tutorial and
+# nothing may hide the way back to the menu.
+# ---------------------------------------------------------------------------
+
+func test_with_the_tutorial_switched_off_the_main_menu_row_is_there_from_the_start() -> void:
+	ProgressStore.tutorial_enabled = false
+	PauseUi.toggle_pause()
+	var found := false
+	for entry in PauseUi._entries:
+		if entry.handler == &"go_to_main_menu":
+			found = true
+	assert_true(found, "回主菜单 is missing while the tutorial is switched off")
+	PauseUi._resume()
+
+func test_with_the_tutorial_switched_off_settings_has_no_replay_row() -> void:
+	ProgressStore.tutorial_enabled = false
+	var page := MeSettingsMenu.new()
+	add_child_autofree(page)
+	await step(1)
+	for line in page._rows_parent.get_children():
+		for child in line.get_children():
+			if child is Label:
+				assert_ne((child as Label).text, "新手教程",
+					"the settings page offers to replay a tutorial that is switched off")

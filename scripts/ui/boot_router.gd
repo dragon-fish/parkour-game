@@ -50,10 +50,12 @@ func _ready() -> void:
 	ResourceLoader.load_threaded_request(_target)
 	print("[load] router requested %s" % _target)
 
-## Where this launch goes. The tutorial is the front door until it has been
-## finished once, and again for one launch whenever the settings page asks to
-## replay it.
+## Where this launch goes. With the tutorial switched on it is the front door
+## until it has been finished once, and again for one launch whenever the
+## settings page asks to replay it; switched off, every launch opens the menu.
 func _pick_target() -> String:
+	if not ProgressStore.tutorial_enabled:
+		return MAIN_MENU_SCENE
 	if ProgressStore.replay_requested or not ProgressStore.tutorial_finished():
 		return LEVEL_0_SCENE
 	return MAIN_MENU_SCENE

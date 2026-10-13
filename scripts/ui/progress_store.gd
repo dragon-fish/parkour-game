@@ -23,6 +23,14 @@ const _SECTION := "progress"
 ## into the tutorial on every launch with no way out.
 static var replay_requested: bool = false
 
+## Whether the tutorial is offered at all. While it is unfinished work this is
+## false: every launch opens the menu, 回主菜单 is on the pause menu from the
+## start, and the settings page has no row to replay it. Only the routing is
+## switched off -- level_0 and the progress key are untouched, so turning this
+## back on restores the whole flow. A var, not a const, so the tests of that
+## flow can switch it on for themselves.
+static var tutorial_enabled: bool = false
+
 ## The full progress blob with every key at its shipped default.
 static func defaults() -> Dictionary:
 	return {

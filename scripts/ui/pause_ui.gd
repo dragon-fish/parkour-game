@@ -268,7 +268,9 @@ func _resume() -> void:
 ## the tutorial IS the front door, and a greyed row would promise a way back
 ## that does not exist.
 func _refresh_entries() -> void:
-	var finished: bool = ProgressStore.tutorial_finished()
+	# With the tutorial switched off the menu is the front door from the first
+	# launch, so the row back to it is always there.
+	var finished: bool = not ProgressStore.tutorial_enabled or ProgressStore.tutorial_finished()
 	_entries = []
 	var labels: Array[String] = []
 	for entry in _ENTRIES:

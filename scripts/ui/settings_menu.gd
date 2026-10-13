@@ -157,6 +157,8 @@ func _build_ui() -> void:
 
 	for row in _ROWS:
 		var key: String = row["key"]
+		if key == "replay_tutorial" and not ProgressStore.tutorial_enabled:
+			continue
 		var desc: String = row["desc"]
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 18.0)
