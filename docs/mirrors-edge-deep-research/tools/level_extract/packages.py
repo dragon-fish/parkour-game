@@ -107,8 +107,15 @@ def load_config(path):
     return config
 
 
+# The install is read-only to the extractor, so a second checkout (a git
+# worktree) can read the main checkout's instead of linking one in: a link
+# inside a worktree is followed by `git worktree remove` and deletes its target.
+INSTALL_ENV = 'ME_INSTALL_DIR'
+
+
 def find_install(project_root):
-    root = os.path.join(project_root, '_local', 'mirrors edge', 'TdGame', 'CookedPC')
+    install = os.environ.get(INSTALL_ENV) or os.path.join(project_root, '_local', 'mirrors edge')
+    root = os.path.join(install, 'TdGame', 'CookedPC')
     if not os.path.isdir(root):
         raise ExtractError('Mirror\'s Edge install not found at %s' % root)
     return root

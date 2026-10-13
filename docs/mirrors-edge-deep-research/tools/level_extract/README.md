@@ -24,6 +24,12 @@ own source, so editing it invalidates every entry). Extraction runs six
 chapters at a time -- each peaks around 1.2 GB -- and the build stays serial,
 because every chapter writes the same mesh library.
 
+The install is read from `_local/mirrors edge` unless `ME_INSTALL_DIR` names
+another (the folder holding `TdGame/`). A second checkout of this repository,
+such as a git worktree, sets it to the main checkout's install instead of
+linking one in: `git worktree remove` follows a link and deletes what it
+points at. Outputs always go to the checkout's own `_local/me-reference`.
+
 One chapter at a time, which is what the tool above runs:
 
 ```powershell
