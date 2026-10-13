@@ -176,6 +176,10 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		simple.append(convex)
 	mesh.set_meta("surface_slots", slots)
 	mesh.set_meta("simple_shapes", simple)
+	# Whether a pawn's box takes the hulls rather than the triangles: with it
+	# set and no hulls, the mesh blocks nothing (see the extractor's
+	# collision_class).
+	mesh.set_meta("use_simple_box_collision", record.get("use_simple_box_collision", true) != false)
 	if not collision_faces.is_empty():
 		var concave := ConcavePolygonShape3D.new()
 		concave.set_faces(collision_faces)

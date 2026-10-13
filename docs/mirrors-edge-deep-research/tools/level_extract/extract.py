@@ -298,8 +298,17 @@ def collision_class(actor, component, record, switched_on=False):
                     or component.get('BlockActors') is False)
     if switched_off and not switched_on:
         return 'none'
-    if record['simple_shapes'] and record['use_simple_box_collision'] is not False:
-        return 'simple'
+    # [ME:CONFIRMED decompile UStaticMeshComponent::LineCheck 0x00dbaef0,
+    # PointCheck 0x00dbb710] An extent trace -- the pawn's every move and probe
+    # -- takes a mesh's simple collision whenever UseSimpleBoxCollision is set
+    # (the class default; no mesh in SP01 clears it), and a mesh with no
+    # BodySetup then blocks NOTHING: there is no fall back to its triangles.
+    # Triangles are only for a mesh that clears the flag. DO NOT give a
+    # hull-less mesh per-triangle collision: pipes, cable ducts, vents, trims
+    # and wall lamps then stand out of every wall as obstacles the original's
+    # runner passes through, and a wall run dies on them.
+    if record['use_simple_box_collision'] is not False:
+        return 'simple' if record['simple_shapes'] else 'none'
     if record['collide_triangles'] == 0:
         return 'none'
     return 'per_poly'

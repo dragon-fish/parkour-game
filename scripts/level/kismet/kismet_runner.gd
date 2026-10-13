@@ -1201,8 +1201,11 @@ func _swap_mesh(placed: Node, path: String) -> void:
 	# beam given shapes was a wall arriving at thirty metres a second.
 	if not placed is CollisionObject3D or placed.get_meta("me_collision", "none") == "none":
 		return
+	# The mesh swapped in collides as the original's would: by its hulls, or,
+	# only when it clears UseSimpleBoxCollision, by its triangles. A hull-less
+	# mesh that keeps the flag blocks nothing.
 	var shapes: Array = mesh.get_meta("simple_shapes", [])
-	if shapes.is_empty() and mesh.has_meta("per_poly_shape"):
+	if shapes.is_empty() and mesh.has_meta("per_poly_shape") and not mesh.get_meta("use_simple_box_collision", true):
 		shapes = [mesh.get_meta("per_poly_shape")]
 	for shape: Shape3D in shapes:
 		var collision := CollisionShape3D.new()

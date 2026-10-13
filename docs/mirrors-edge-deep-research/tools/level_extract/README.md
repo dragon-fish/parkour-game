@@ -91,13 +91,22 @@ placements import from shared `.upk` packages, which ship uncompressed.
 are placed. The tutorial's old manifest carried a whole building at the origin
 (`S_C_02_02_F`, `S_C_02_02_R`) that exists in no level.
 
-**No convex hull does not mean no collision.** Collision class per placement:
-`CollideActors`/`BlockActors` false on actor or component means none; a mesh
-with simple shapes and `UseSimpleBoxCollision` uses them; anything else collides
-per triangle with the surfaces whose `EnableCollision` is set. Filling hull-less
-meshes with bounding boxes turned light-shaft cards and hollow rings into walls.
-That per-triangle is the fallback when a mesh has no simple collision is
-`[ME:INFERRED]` from engine behaviour, not verified in the game.
+**No convex hull means no collision -- for the pawn.** Collision class per
+placement: `CollideActors`/`BlockActors` false on actor or component means none;
+a mesh that keeps `UseSimpleBoxCollision` (the class default, which no SP01 mesh
+clears) collides by its simple shapes, and with none it collides with nothing;
+only a mesh that clears the flag collides per triangle with the surfaces whose
+`EnableCollision` is set. `[ME:CONFIRMED decompile]` `UStaticMeshComponent::
+LineCheck` (0x00dbaef0) and `PointCheck` (0x00dbb710) take the simple path for
+every extent trace when the flag is set, and return no hit when the mesh has no
+`BodySetup`; triangles are read only without the flag, for a trace flagged
+complex (0x20100), or for a component with no owner. Pipes, cable ducts, vents,
+trims and wall lamps are hull-less: per-triangle, they stood out of every wall
+and ended wall runs the original carries on through. Filling hull-less meshes
+with bounding boxes is wrong for the same reason, and turned light-shaft cards
+and hollow rings into walls. The one complex trace the moves make, WallClimb's
+head-height check (flags 0x224ce), does see a hull-less mesh's triangles in the
+original and sees nothing here.
 
 **Materials decide what a surface is.** A light shaft is an `BLEND_Additive`,
 `MLM_Unlit` material; drawn opaque it is a grey slab. The extractor follows
