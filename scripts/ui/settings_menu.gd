@@ -72,6 +72,9 @@ const _ROW_HEIGHT := 40.0
 const _BINDING_HELP := "点击一个按键槽位，再按下新的按键、鼠标按键或滚动滚轮。Esc 取消，Delete / Backspace 清空该槽位。"
 const _CAPTURE_PROMPT := "请按下按键…"
 const _CAPTURE_HELP := "按下键盘按键、鼠标按键或滚动滚轮。Esc 取消，Delete / Backspace 清空该槽位。"
+const _CAPTURE_TITLE := "请按下要绑定到「%s」的按键"
+const _CAPTURE_HINT := "键盘按键、鼠标按键或滚轮均可
+Esc 取消　　Delete / Backspace 清空"
 const _RESERVED_HELP := "「%s」是保留按键，不能绑定。请换一个按键，或按 Esc 取消。"
 const _EMPTY_SLOT := "—"
 const _CONFLICT_QUESTION := "此按键已绑定「%s」，是否取代？"
@@ -103,6 +106,10 @@ var _capture: Dictionary = {}
 ## The conflict being asked about: {action, slot, binding, holder}, or {}.
 var _conflict: Dictionary = {}
 var _conflict_dialog: Control
+## The modal shown while a slot waits for an input, and its hint line (which
+## turns into the reserved-key refusal when one is pressed).
+var _capture_overlay: Control
+var _capture_hint: Label
 
 func _ready() -> void:
 	theme = MeTheme.ui_theme()
@@ -118,6 +125,7 @@ func _ready() -> void:
 func reload() -> void:
 	_working = SettingsStore.load_settings()
 	_capture = {}
+	_hide_capture_overlay()
 	_close_conflict()
 	_refresh_controls()
 
@@ -458,11 +466,72 @@ func _input(event: InputEvent) -> void:
 func _begin_capture(action: String, slot: int) -> void:
 	_capture = {action = action, slot = slot}
 	_show_description(_CAPTURE_HELP)
+	_show_capture_overlay(action)
 	_refresh_bindings()
 
 func _end_capture() -> void:
 	_capture = {}
+	_hide_capture_overlay()
 	_refresh_bindings()
+
+## A modal over the whole page while a slot waits for its input. The input
+## itself is taken in _input() before the GUI either way; the overlay is what
+## makes that visible -- with only the slot's own label changing, a wheel
+## notch meant as a binding reads as "the list should have scrolled", and a
+## click meant as one reads as a press on whatever is under the pointer.
+func _show_capture_overlay(action: String) -> void:
+	_hide_capture_overlay()
+	var overlay := Control.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	var dim := ColorRect.new()
+	dim.color = MeTheme.BACKDROP
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	overlay.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", MeTheme.panel_style())
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -280.0
+	panel.offset_right = 280.0
+	panel.offset_top = -90.0
+	panel.offset_bottom = 90.0
+	overlay.add_child(panel)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 18.0)
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel.add_child(column)
+
+	var title := Label.new()
+	title.text = _CAPTURE_TITLE % InputBindings.action_label(action)
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
+	MeTheme.fit_shadow(title)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(title)
+
+	_capture_hint = Label.new()
+	_capture_hint.text = _CAPTURE_HINT
+	_capture_hint.add_theme_font_size_override("font_size", 18)
+	_capture_hint.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
+	MeTheme.fit_shadow(_capture_hint)
+	_capture_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_capture_hint)
+
+	_capture_overlay = overlay
+	add_child(overlay)
+
+func _hide_capture_overlay() -> void:
+	if _capture_overlay != null and is_instance_valid(_capture_overlay):
+		_capture_overlay.queue_free()
+	_capture_overlay = null
+	_capture_hint = null
 
 ## The captured input, applied to the slot being captured: assigned, refused
 ## as reserved, or put to the player as a conflict.
@@ -472,7 +541,10 @@ func _offer(binding: Dictionary) -> void:
 	if InputBindings.is_reserved(binding):
 		# Stays in capture: the player was asked for a key and has not given
 		# one that can be used.
-		_show_description(_RESERVED_HELP % InputBindings.binding_label(binding))
+		var refusal := _RESERVED_HELP % InputBindings.binding_label(binding)
+		_show_description(refusal)
+		if _capture_hint != null:
+			_capture_hint.text = refusal
 		return
 	var action: String = _capture.action
 	var slot: int = _capture.slot
@@ -495,6 +567,7 @@ func _assign(action: String, slot: int, binding: Dictionary) -> void:
 func _ask_to_replace(action: String, slot: int, binding: Dictionary, holder: String) -> void:
 	_close_conflict()
 	_capture = {}
+	_hide_capture_overlay()
 	_conflict = {action = action, slot = slot, binding = binding, holder = holder}
 	_conflict_dialog = MeTheme.confirm_dialog(
 		_CONFLICT_QUESTION % InputBindings.action_label(holder), "取消", "确定",
@@ -533,6 +606,7 @@ func _close_conflict() -> void:
 ## saved until 保存设置, like 默认.
 func _on_reset_bindings_pressed() -> void:
 	_capture = {}
+	_hide_capture_overlay()
 	_working.bindings = InputBindings.defaults()
 	_refresh_bindings()
 
@@ -718,6 +792,7 @@ func _sync_window_memory() -> void:
 func _on_cancel_pressed() -> void:
 	_working = SettingsStore.load_settings()
 	_capture = {}
+	_hide_capture_overlay()
 	_close_conflict()
 	closed.emit()
 

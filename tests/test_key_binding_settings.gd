@@ -166,3 +166,44 @@ func test_every_action_has_a_row_with_two_slots() -> void:
 		assert_true(page._binding_buttons.has(action.id), "no row for %s" % action.id)
 		assert_eq((page._binding_buttons[action.id] as Array).size(), InputBindings.SLOTS,
 			"%s does not have two slots" % action.id)
+
+func _scroll_of(node: Node) -> ScrollContainer:
+	for child in node.get_children():
+		if child is ScrollContainer:
+			return child as ScrollContainer
+		var found := _scroll_of(child)
+		if found != null:
+			return found
+	return null
+
+func test_capture_shows_a_modal_over_the_page_and_esc_takes_it_down() -> void:
+	var page: MeSettingsMenu = await _page()
+	page._begin_capture(InputBindings.JUMP, 0)
+	assert_not_null(page._capture_overlay, "capture put no modal over the page")
+	assert_true(page._capture_overlay.is_visible_in_tree(), "the capture modal is not on screen")
+	page._input(_key_event(KEY_ESCAPE))
+	assert_null(page._capture_overlay, "Esc left the capture modal up")
+
+func test_a_wheel_notch_in_capture_binds_and_does_not_scroll_the_list() -> void:
+	var page: MeSettingsMenu = await _page()
+	page._working.bindings[InputBindings.ZOOM_OUT] = [{}, {}]
+	var scroll := _scroll_of(page)
+	assert_not_null(scroll, "the settings page has no scrolling list")
+	scroll.scroll_vertical = 0
+	page._begin_capture(InputBindings.JUMP, 1)
+	await step(1)
+	# Through the real dispatch, over the list, as a player's wheel would be.
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	wheel.position = scroll.get_global_rect().get_center()
+	wheel.global_position = wheel.position
+	get_viewport().push_input(wheel)
+	var release := wheel.duplicate() as InputEventMouseButton
+	release.pressed = false
+	get_viewport().push_input(release)
+	await step(2)
+	assert_eq(scroll.scroll_vertical, 0, "the wheel notch being bound also scrolled the list")
+	assert_true(InputBindings.same(page._working.bindings[InputBindings.JUMP][1],
+		InputBindings.mouse(MOUSE_BUTTON_WHEEL_DOWN)), "the wheel notch was not bound")
+	assert_null(page._capture_overlay, "the capture modal stayed up after the binding")
