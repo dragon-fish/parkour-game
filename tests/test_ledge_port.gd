@@ -663,6 +663,52 @@ func test_a_ladder_is_got_onto_and_climbed() -> void:
 	assert_gt(ladder.get_closest_step(player.global_position.y), step0, "holding forward did not climb")
 	assert_true(line != null)
 
+## Gets onto a ladder 8 m tall with the stick held forward and returns once
+## the first step is under way.
+func _climbing(player: Player) -> ClimbMove:
+	_box(Vector3(2.0, 8.0, 1.0), Vector3(0.0, 4.0, -2.0))
+	_line(InterestLine.Kind.LADDER, Vector3(0.0, 0.0, -1.45), Vector3(0.0, 8.0, -1.45), PI)
+	await step(1)
+	_face(player, 0.0)
+	(_world["input"] as ScriptedInputSource).hold_move(0.0, 1.0)
+	var climb: ClimbMove = player.move_manager.move_for(Move.CLIMB)
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.CLIMB and climb.is_playing_animation:
+			break
+	return climb
+
+## [ME:CONFIRMED decompile TdMove_Climb.HandleMoveAction / ReachedPreciseLocation,
+## N4 §1.1, §2.7] A held climb chains its steps: the step is reached in
+## PrePhysics, which stops the body, and the controller's action on the very
+## next tick starts the next one. One still tick a step, never two in a row;
+## and the animation is told a climb is going on through that tick too.
+func test_a_held_climb_chains_its_steps() -> void:
+	var player: Player = await _player()
+	var climb: ClimbMove = await _climbing(player)
+	assert_eq(player.move_manager.current_name, Move.CLIMB, "not on the ladder")
+	var first: int = climb.ladder.get_closest_step(player.global_position.y)
+	var last_y: float = player.global_position.y
+	var still_run: int = 0
+	var longest_still: int = 0
+	var told_still: int = 0
+	# Four steps of 32 uu at 96 uu/s, a still tick each, and some slack.
+	for i in 4 * 21 + 10:
+		await step(1)
+		if absf(player.global_position.y - last_y) < 1e-5:
+			still_run += 1
+			longest_still = maxi(longest_still, still_run)
+		else:
+			still_run = 0
+		last_y = player.global_position.y
+		if climb.climb_direction() == 0:
+			told_still += 1
+	assert_eq(player.move_manager.current_name, Move.CLIMB, "the climb ended")
+	assert_eq(longest_still, 1, "a step waited %d ticks for the next" % longest_still)
+	assert_gte(climb.ladder.get_closest_step(player.global_position.y) - first, 4,
+		"the held climb fell behind one step every 0.35 s")
+	assert_eq(told_still, 0, "the animation was told the climb stopped on %d ticks" % told_still)
+
 ## [ME:CONFIRMED decompile] GrabPullUp.StartMove: ResetCameraLook(DisableLookTime),
 ## a view pitched up on the hang is brought level over the pull-up's 0.2 s.
 func test_a_pull_up_brings_the_view_level() -> void:

@@ -356,6 +356,69 @@ func test_a_top_exit_plays_climb_up_instead_of_the_hang() -> void:
 	assert_eq(animator._target_animation(), &"ClimbUp_1m",
 		"a top exit played '%s'" % String(animator._target_animation()))
 
+# --- a held climb or shimmy is one cycle, not one clip per step -----------------
+
+const TRAVEL_CLIPS: Array = [&"idle", &"Climb_Idle", &"Climb_Up", &"Climb_Down",
+	&"Climb_Left", &"Climb_Right"]
+
+## Whether the state machine's clip went back to an earlier frame than the
+## tick before without having looped (the stub clips are 1 s long).
+static func _restarted(previous: float, now: float) -> bool:
+	return now < previous and previous - now < 0.5
+
+## The original stops between two steps of a held climb for one tick (the
+## step is reached, the next is asked for on the tick after). The pack's
+## Climb_Up is a cycle: dropped to the hang for that tick, it crossfaded to
+## Climb_Idle and back and started over at every rung, which reads as the
+## climb stalling step by step.
+func test_a_held_climb_keeps_one_climb_cycle_across_its_steps() -> void:
+	var animator: CharacterAnimator = await _animator_with(TRAVEL_CLIPS)
+	var player: Player = _world["player"]
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	shape.shape = BoxShape3D.new()
+	(shape.shape as BoxShape3D).size = Vector3(2.0, 8.0, 1.0)
+	wall.add_child(shape)
+	wall.position = Vector3(0.0, 4.0, -2.0)
+	add_child_autofree(wall)
+	var line := InterestLine.new()
+	line.kind = InterestLine.Kind.LADDER
+	line.curve = Curve3D.new()
+	# The rungs at z = -1.45, the line's front facing +Z out of the wall.
+	line.curve.add_point(Basis(Vector3.UP, -PI) * Vector3(0.0, 0.0, -1.45))
+	line.curve.add_point(Basis(Vector3.UP, -PI) * Vector3(0.0, 8.0, -1.45))
+	line.rotation.y = PI
+	add_child_autofree(line)
+	await step(1)
+	player.rotation.y = 0.0
+	player.pawn_yaw = 0.0
+	(_world["input"] as ScriptedInputSource).hold_move(0.0, 1.0)
+	var climb := player.move_manager.move_for(Move.CLIMB) as ClimbMove
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.CLIMB and animator.current_clip == &"Climb_Up":
+			break
+	assert_eq(animator.current_clip, &"Climb_Up", "the climb never played Climb_Up")
+	await step(10)
+	var playback: AnimationNodeStateMachinePlayback = animator._playback
+	var position: float = playback.get_current_play_position()
+	var off_clip: Array[String] = []
+	var restarts: int = 0
+	# Four steps.
+	for i in 4 * 21:
+		await step(1)
+		if animator.current_clip != &"Climb_Up" or playback.get_current_node() != &"Climb_Up" \
+				or animator._gate_input != CharacterAnimator.GRAPH_STATES:
+			off_clip.append("%d:%s/%s" % [i, animator.current_clip, playback.get_current_node()])
+		var now: float = playback.get_current_play_position()
+		if _restarted(position, now):
+			restarts += 1
+		position = now
+	assert_eq(player.move_manager.current_name, Move.CLIMB, "the climb ended")
+	assert_true(climb.is_playing_animation or climb.climb_direction() != 0, "the climb was not held")
+	assert_eq(off_clip, [] as Array[String], "the climb left its cycle between steps")
+	assert_eq(restarts, 0, "Climb_Up started over %d times" % restarts)
+
 # --- the two lists that have to agree -------------------------------------------
 
 ## Every state-name constant declared on Move, read from its own source.

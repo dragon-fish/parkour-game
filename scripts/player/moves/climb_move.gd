@@ -283,12 +283,32 @@ func post_constrain_camera(constrain_amount: Vector2i, delta_rot: Vector2i) -> V
 	return delta_rot
 
 ## For the animation: -1 down, 0 still, +1 up.
+##
+## Between two steps of a held climb the original idles for exactly one tick:
+## the step is reached in PrePhysics, and the next is asked for by the
+## controller's action on the tick after. That tick answers for the step the
+## held action starts next, so the presentation does not drop the climb cycle
+## to the hang and restart it at every rung.
 func climb_direction() -> int:
 	if climb_down_fast:
 		return -1
 	if not is_playing_animation:
-		return 0
+		return _held_step_direction()
 	return 1 if precise_location.y > player.global_position.y else -1
+
+## The direction handle_climb_action() would take for the action being held,
+## or 0 where it would start nothing: no hands free, no step left that way.
+func _held_step_direction() -> int:
+	if climb_state != State.CLIMBING or ladder == null or not view_within_hands_reach():
+		return 0
+	var current: int = ladder.get_closest_step(player.global_position.y)
+	if wanted_action == MA_CLIMB_UP or wanted_action == MA_CLIMB_UP_LONG:
+		if current != ladder.get_last_step() or ladder.line.can_exit_at_top:
+			return 1
+	elif wanted_action == MA_CLIMB_DOWN or wanted_action == MA_CLIMB_DOWN_LONG:
+		if current > 1:
+			return -1
+	return 0
 
 func is_exiting_top() -> bool:
 	return climb_state == State.EXIT_AT_TOP
