@@ -214,9 +214,9 @@ FrictionModifier                        0.3
 
 **状态：部分被取代。** 原条目把 `TdMove_WallKick` "折进"了本状态的出口，并用它的 `WallKickVelocity2D = 300` / `WallKickVelocityZ = 580` 解释"蹬墙跳出去"。**WallKick 在发售版里不可达**：`CanDoMove()` 恒为 false，仲裁表里 Jump → WallKick 一行永远不成立（[15 §15.3](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。这些数、`RedoMoveTime = 1.0` 都没有消费者。
 
-垂直蹬墙中按 Q 对应的是 `WallClimb.HandleMoveAction(Turn)` → **WallClimb180TurnJump**，按跳则是 WallClimbDodgeJump（[15 §15.3、§15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：转身动画之后 0.6 s 窗口内按跳，`Velocity = 墙法线2D · 400`，跳高 250（`JumpPushAwaySpeed 400`、`JumpOffZHeight 250`、`JumpTimeWindow 0.6`）。
+垂直蹬墙中按 Q 对应的是 `WallClimb.HandleMoveAction(Turn)` → **WallClimb180TurnJump**，按跳则是 WallClimbDodgeJump（[15 §15.3、§15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：按 Q 的那一帧起 0.6 s 内（共 36 帧，与转身动画同时进行，不是动画之后）按跳立刻起跳，同一帧按 Q 与空格也成立（Q 先处理）；窗口外按跳无效，也没有自动起跳，没有预输入——早于 Q 一帧的空格会被蹬墙的 DodgeJump 行拒绝后丢弃。转身期间是普通下落物理，有重力。`Velocity = 墙法线2D · 400`，跳高 250（`JumpPushAwaySpeed 400`、`JumpOffZHeight 250`、`JumpTimeWindow 0.6`）。
 
-所有者描述：垂直踢墙期间按 Q 进入，有"很短的补偿时间"，期间不受重力；此时按空格可蹬墙跳出去，否则速度归零后落下。这对应 WallClimb180TurnJump 的转身动画与 0.6 s 窗口，而不是下面这组字段：下面是 `TdMove_180Turn`（地面 Q 转身，[03 §3.2](mirrors-edge-deep-research/03-损速机制.md)）的 CDO，原条目把两者对在了一起。其中 `DisableMovementTime = 0.3` 是地面转身时禁用移动的时长（该字段在库里普遍存在，`TdMove_Slide` 是 −1.0 即不启用）：
+所有者描述：垂直踢墙期间按 Q 进入，有"很短的补偿时间"，期间不受重力；此时按空格可蹬墙跳出去，否则速度归零后落下。这对应 WallClimb180TurnJump 的转身动画与 0.6 s 窗口（"不受重力"是观感：身体带着爬墙残余的上升速度，原版物理仍是普通下落），而不是下面这组字段：下面是 `TdMove_180Turn`（地面 Q 转身，[03 §3.2](mirrors-edge-deep-research/03-损速机制.md)）的 CDO，原条目把两者对在了一起。其中 `DisableMovementTime = 0.3` 是地面转身时禁用移动的时长（该字段在库里普遍存在，`TdMove_Slide` 是 −1.0 即不启用）：
 
 ```
 FrictionModifier      0.3
