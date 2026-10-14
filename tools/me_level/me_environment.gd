@@ -235,7 +235,10 @@ func _apply_sky(env: Environment) -> void:
 	# The sky light, not the dome: the bake's colours from above and below,
 	# relative to the sun, so undoing the exposure keeps the share whatever
 	# the sun is worth. No clouds, no glare.
-	_sky_parameters(material, 1.0 / _exposure())
+	# A lightmapped level is exposed as the original exposes it, so its sky
+	# light is in the bake's own units: the share times the sun it is a share
+	# of. The older path undid its fixed exposure instead.
+	_sky_parameters(material, sun_brightness if lightmapped else 1.0 / _exposure())
 	var above := ambient_color * ambient_energy
 	var below := ambient_ground_color * ambient_ground_energy
 	material.set_shader_parameter("zenith_color", Vector3(above.r, above.g, above.b))
