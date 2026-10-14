@@ -10,9 +10,15 @@ extends RefCounted
 
 const Common := preload("res://tools/me_level/me_level_common.gd")
 
-## Multiplies every baked texture. The original's diffuse maps are near white
-## and were lit by baked light; under a live sun they clip. A dial.
-const TEXTURE_ALBEDO := Color(0.85, 0.85, 0.85)
+## Multiplies every baked texture in the plain, live-lit materials. 1: the
+## bake lit the diffuse maps as they are, and the live light is now in the
+## bake's units and exposed by the original's eye adaptation. Measured in the
+## tutorial's sunlit spots, modern lighting against the bake: at 0.85 the lit
+## surfaces came out 0.64 to 0.76 times as bright, at 1 within 1.0 to 1.14 --
+## SDFGI's bounce compounds the albedo, so the factor costs far more than 15%.
+## (It was 0.85 when the frame had a fixed exposure and the near-white maps
+## clipped under the sun.) A dial.
+const TEXTURE_ALBEDO := Color(1.0, 1.0, 1.0)
 ## Roughness where a surface mirrors the sky (a facade's windows, a storefront):
 ## the original's cube map is a sharp reflection. A dial.
 const MIRROR_ROUGHNESS := 0.05
@@ -83,6 +89,7 @@ func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 		# nothing until something else happens to invalidate the mesh.
 		content["normal_scale"] = normal_scale
 		content["baker_tint_strength"] = baker_tint_strength
+		content["texture_albedo"] = str(TEXTURE_ALBEDO)
 		var hash := JSON.stringify(content, "", true).sha256_text()
 		var path := path_for(mesh_name)
 		if ResourceLoader.exists(path):
@@ -513,9 +520,8 @@ func _texture_file(material_name: String, kind: String, png: String, source: Ima
 ## three coefficient textures, or for a `vertex` lightmap the chapter's
 ## samples texture.
 ##
-## No TEXTURE_ALBEDO and no baker_tint: both stand in for what the lightmap
-## carries itself -- the brightness the bake gave the surface and the colour
-## Beast was told it has.
+## No baker_tint: it stands in for what the lightmap carries itself, the
+## colour Beast was told the surface has.
 func lightmap_material(entry: Dictionary, atlas: Array, vertex := false) -> ShaderMaterial:
 	var blend: String = entry.get("blend", "opaque")
 	if entry.get("unlit", false) or not LIGHTMAP_SHADERS.has(blend):

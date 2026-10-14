@@ -136,8 +136,13 @@ const NOMINAL_SUN_BRIGHTNESS := 2.0
 @export var ambient_color := Color(0.64, 0.70, 0.85)
 @export var ambient_ground_energy := 0.1
 @export var ambient_ground_color := Color(0.74, 0.63, 0.45)
-## How much bounced light SDFGI adds, sun and lamps alike.
-@export var bounce_energy := 1.0
+## How much bounced light SDFGI adds, sun and lamps alike. Measured against
+## the bake's irradiance in the tutorial's sunlit spots (white albedo): at 1
+## the shade got 1.8 to 3.6 times less light than the bake gives it, sunlit
+## ground and walls as much; at 2, 0.9 to 2 times less in the shade and the lit
+## parts within 0.7 to 1.2. Beast bounces the sun off the city's near-white
+## roofs far more than SDFGI does. A dial.
+@export var bounce_energy := 2.0
 ## The dome's own brightness in the frame.
 @export var sky_energy := 1.0
 ## The dome's colours, linear, at the brightness the frame should show them.
