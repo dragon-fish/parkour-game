@@ -135,3 +135,68 @@ func test_every_texture_a_lightmapped_material_draws_is_a_file() -> void:
 					bad.append("%s.%s" % [instance.name, name])
 	assert_eq(bad, [] as Array[String], "textures with no file behind them")
 	root.free()
+
+
+const ShadowLight := preload("res://tools/me_level/me_shadow_light.gd")
+const Common := preload("res://tools/me_level/me_level_common.gd")
+
+
+## [ME:CONFIRMED DLE 0xff4517] the shadow light takes the shadow environment's
+## dominant lobe; what is left of its ambient decides how dark the shadow is.
+func test_a_lone_sun_casts_a_black_shadow_from_where_it_shines() -> void:
+	var light := ShadowLight.new()
+	var to_sun := Vector3(0.3, 0.8, -0.5).normalized()
+	light.sun_directions = PackedVector3Array([to_sun])
+	light.sun_intensities = PackedVector3Array([Vector3(2.5, 2.4, 2.2)])
+	light.ambient_shadow_color = Vector3.ZERO
+	var shadow: Dictionary = ShadowLight.representative_shadow(light.shadow_environment([true]))
+	assert_almost_eq((shadow.direction as Vector3).dot(to_sun), 1.0, 1e-4, "the shadow falls away from the sun")
+	assert_almost_eq((shadow.modulation as Vector3).length(), 0.0, 1e-4, "a lone sun leaves no ambient")
+	shadow = ShadowLight.representative_shadow(light.shadow_environment([false]))
+	assert_true(shadow.is_empty(), "nothing in the environment, no shadow")
+	light.free()
+
+
+## [ME:DERIVED] the formula on the tutorial's own lights (DirectionalLight_0,
+## SkyLight_0, AmbientShadowColor), checked against a separate evaluation of
+## the original's code: the sun's shadow and the one cast out of the sun.
+func test_the_tutorials_lights_give_the_originals_shadow_colours() -> void:
+	var light := ShadowLight.new()
+	light.sun_directions = PackedVector3Array([Vector3(0.33513, 0.79861, -0.4999).normalized()])
+	light.sun_intensities = PackedVector3Array([Vector3(1.95, 1.78571, 1.48063)])
+	light.sky_upper = Vector3(0.1136, 0.13772, 0.21035)
+	light.sky_lower = Vector3(0.12785, 0.08966, 0.04253)
+	var lit: Dictionary = ShadowLight.representative_shadow(light.shadow_environment([true]))
+	assert_almost_eq((lit.modulation as Vector3).x, 0.188, 0.002)
+	assert_almost_eq((lit.modulation as Vector3).z, 0.213, 0.002)
+	var shade: Dictionary = ShadowLight.representative_shadow(light.shadow_environment([false]))
+	assert_almost_eq((shade.modulation as Vector3).x, 0.686, 0.002)
+	assert_almost_eq((shade.modulation as Vector3).z, 0.600, 0.002)
+	assert_almost_eq((shade.direction as Vector3).y, 1.0, 1e-4, "out of the sun the shadow falls straight down")
+	light.free()
+
+
+## The baked world is reached by the shadow light alone, and only a
+## character casts into it: the bake holds the rest of the shadows.
+func test_the_tutorials_baked_world_takes_only_the_shadow_light() -> void:
+	if not ResourceLoader.exists(TUTORIAL_GEOMETRY):
+		pass_test("no tutorial geometry on this machine")
+		return
+	var root: Node = (load(TUTORIAL_GEOMETRY) as PackedScene).instantiate()
+	var lit := _lightmapped(root)
+	var off_layer := lit.filter(func(i: GeometryInstance3D) -> bool: return i.layers != Common.BAKED_LAYER)
+	assert_eq(off_layer.size(), 0, "lightmapped instances off the baked layer")
+	var shadow_lights := root.find_children("ShadowLight", "DirectionalLight3D", true, false)
+	assert_eq(shadow_lights.size(), 1)
+	if shadow_lights.size() == 1:
+		var light := shadow_lights[0] as DirectionalLight3D
+		assert_lt(light.light_energy, 0.0, "the shader knows the shadow light by its negative energy")
+		assert_eq(light.light_cull_mask, Common.BAKED_LAYER)
+		assert_eq(light.shadow_caster_mask, Common.CHARACTER_SHADOW_LAYER)
+	for node in root.find_children("*", "Light3D", true, false):
+		if node.name != "ShadowLight":
+			assert_eq((node as Light3D).light_cull_mask & Common.BAKED_LAYER, 0, "%s lights the bake" % node.name)
+	for node in root.find_children("*", "GeometryInstance3D", true, false):
+		assert_eq((node as GeometryInstance3D).layers & Common.CHARACTER_SHADOW_LAYER, 0,
+				"%s casts the character's shadow" % node.name)
+	root.free()

@@ -48,6 +48,7 @@ extends Node3D
 # (.private/docs/me-reference-shots) and are overridden per level from the
 # level config's "look" block, by name.
 
+const Common := preload("res://tools/me_level/me_level_common.gd")
 const Lut := preload("res://tools/me_level/me_tone_curve.gd")
 const ToneMap := preload("res://tools/me_level/me_tone_map.gd")
 const VolumeScript := preload("res://tools/me_level/me_post_process_volume.gd")
@@ -435,6 +436,10 @@ func _apply_sun(arena: Arena) -> void:
 	sun.directional_shadow_split_2 = 0.15
 	sun.directional_shadow_split_3 = 0.4
 	sun.directional_shadow_fade_start = 0.9
+	if lightmapped:
+		# What moves only: the baked world has this sun in its bake already,
+		# and its shadow light (me_shadow_light.gd) is the only light it takes.
+		sun.light_cull_mask &= ~Common.BAKED_LAYER
 
 
 func _sun_color() -> Color:

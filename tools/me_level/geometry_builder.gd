@@ -13,6 +13,12 @@ const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
 const TONE_SETTINGS := preload("res://tools/me_level/me_tone_settings.gd")
 const LIGHTMAPPED_SCRIPT := preload("res://tools/me_level/me_lightmapped.gd")
 const POST_PROCESS_VOLUME_SCRIPT := preload("res://tools/me_level/me_post_process_volume.gd")
+const SHADOW_LIGHT_SCRIPT := preload("res://tools/me_level/me_shadow_light.gd")
+## Metres from the camera the player's shadow is drawn to. It reaches at most
+## a few metres from the body (me_shadow_light.gd), and the third-person eye
+## sits a few metres behind it: past this there is nothing of it to draw, and
+## a shorter range is a finer shadow. A dial.
+const SHADOW_LIGHT_RANGE_M := 25.0
 
 ## Meshes a hand grips. InterestLine volumes drive those moves, so a solid mesh
 ## only stops the capsule short of the line it is reaching for.
@@ -141,8 +147,11 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			instance.visible = true
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_apply_overrides(instance, placement)
+		var baked := false
 		if lightmaps != null and placement.has("lightmap") and not cloth:
-			lightmaps.apply(instance, placement)
+			baked = lightmaps.apply(instance, placement)
+		if baked:
+			instance.layers = Common.BAKED_LAYER
 		if cloth:
 			_cloth_draws_both_sides(instance as SoftBody3D)
 		var rest: MeshInstance3D = _cloth_rest(mesh) if cloth else null
@@ -511,7 +520,52 @@ static func _environment(look: Dictionary, dials: Dictionary, lightmapped := fal
 		elif current is Vector3:
 			value = Common.v3(value)
 		node.set(key, value)
+	if lightmapped:
+		node.add_child(_shadow_light(look))
 	return node
+
+
+## The player's shadow on the baked world (me_shadow_light.gd): lights nothing
+## but BAKED_LAYER, and only CHARACTER_SHADOW_LAYER casts into it.
+static func _shadow_light(look: Dictionary) -> DirectionalLight3D:
+	var light := DirectionalLight3D.new()
+	light.name = "ShadowLight"
+	light.set_script(SHADOW_LIGHT_SCRIPT)
+	var to_sun := Common.v3(look.get("sun_direction", [0.0, 1.0, 0.0])).normalized()
+	var directions := PackedVector3Array()
+	var intensities := PackedVector3Array()
+	var traced: Array[bool] = []
+	var sky_upper := Vector3.ZERO
+	var sky_lower := Vector3.ZERO
+	for entry: Dictionary in look.get("character_shadow", []):
+		if entry["kind"] == "sun":
+			directions.append(Common.v3(entry["direction"]).normalized())
+			intensities.append(Common.v3(entry["intensity"]))
+			traced.append(bool(entry["traced"]))
+		else:
+			sky_upper += Common.v3(entry["upper"])
+			sky_lower += Common.v3(entry["lower"])
+	if not directions.is_empty():
+		to_sun = directions[0]
+	var up := Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD
+	light.transform = Transform3D(Basis.looking_at(-to_sun, up), Vector3.ZERO)
+	light.set("sun_directions", directions)
+	light.set("sun_intensities", intensities)
+	light.set("sun_traced", traced)
+	light.set("sky_upper", sky_upper)
+	light.set("sky_lower", sky_lower)
+	# Negative: the shadow light takes light away (me_lightmap.gdshaderinc).
+	light.light_energy = -1.0
+	light.light_specular = 0.0
+	light.light_volumetric_fog_energy = 0.0
+	light.light_bake_mode = Light3D.BAKE_DISABLED
+	light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	light.light_cull_mask = Common.BAKED_LAYER
+	light.shadow_caster_mask = Common.CHARACTER_SHADOW_LAYER
+	light.shadow_enabled = true
+	light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	light.directional_shadow_max_distance = SHADOW_LIGHT_RANGE_M
+	return light
 
 
 static func _color(rgb: Array) -> Color:
@@ -983,6 +1037,7 @@ func _bsp_lightmapped(group: Dictionary) -> MeshInstance3D:
 		mesh = tool.commit(mesh)
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
+	instance.layers = Common.BAKED_LAYER
 	for i in group.order.size():
 		var entry: Dictionary = group.entries[group.order[i]]
 		mesh.surface_set_name(i, group.order[i])
@@ -1041,6 +1096,9 @@ func _build_lights(lights: Array) -> Node3D:
 			# door lit a whole block from 60 m, then went dark as the player
 			# walked up and the fine cascades took over.
 			light.light_bake_mode = Light3D.BAKE_DISABLED
+		if lightmaps != null:
+			# The baked world takes no lamp: its light is in the bake.
+			light.light_cull_mask &= ~Common.BAKED_LAYER
 		light.set_meta("me_brightness", float(entry["brightness"]))
 		light.set_meta(Common.PACKAGE_META, Common.package_key(str(entry["package"])))
 		light.set_meta(Common.ACTOR_META, Common.actor_id(str(entry["package"]), str(entry["name"])))

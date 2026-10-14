@@ -49,6 +49,13 @@ theme/custom_font="res://assets/fonts/noto_sans_sc.tres"
 
 3d/physics_engine="Jolt Physics"
 
+[shader_globals]
+
+me_shadow_light_sphere={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+
 [rendering]
 
 rendering_device/driver.windows="d3d12"

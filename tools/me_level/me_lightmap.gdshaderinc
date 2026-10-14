@@ -1,7 +1,16 @@
 // A static surface of an extracted Mirror's Edge level, lit by the original's
 // own Beast lightmap and by nothing live: what the original's base pass draws
-// for a lightmapped primitive. Unshaded, so no Godot light and no GI reaches
-// it; the level's fog still does.
+// for a lightmapped primitive. The level's fog still reaches it.
+//
+// The bake is the EMISSION, and the only light that changes it is the
+// level's shadow light (geometry_builder's ShadowLight): a directional light
+// of NEGATIVE energy, which only takes light away. Where something that moves
+// blocks the sun, the bake is multiplied by the shadow's modulation, as the
+// original's modulated shadows multiply the frame (light() below). Any other
+// light reaching the surface -- the shell's sun in the editor -- is ignored:
+// its shadows are in the bake already. With the shadow light off or out of
+// range the surface is its bake exactly, as an unshaded one was. Ambient and
+// specular are off so nothing else of Godot's lighting is added.
 //
 // [ME:CONFIRMED Engine/Shaders/BasePassPixelShader.usf, BasePassVertexShader.usf,
 // LocalVertexFactory.usf, MaterialTemplate.usf]
@@ -57,6 +66,13 @@ instance uniform vec3 lightmap_scale_1 = vec3(1.0);
 instance uniform vec3 lightmap_scale_2 = vec3(1.0);
 // Where the placement's run of vertex samples starts, in vertices.
 instance uniform int lightmap_vertex_offset = 0;
+
+// The shadow light's point light, as the original places it: (position, 1 /
+// Radius), world space; w = 0 when there is none (me_shadow_light.gd).
+global uniform vec4 me_shadow_light_sphere;
+// [ME:CONFIRMED DLE 0xff3a90] its ShadowFalloffExponent.
+const float SHADOW_FALLOFF_EXPONENT = 0.5;
+varying float shadow_falloff;
 
 varying vec3 vertex_light_0;
 varying vec3 vertex_light_1;
@@ -124,6 +140,16 @@ void fragment() {
 		color += texture(emissive_texture, uv).rgb;
 	}
 	ALBEDO = color;
+	EMISSION = color;
+	shadow_falloff = 1.0;
+	if (me_shadow_light_sphere.w > 0.0) {
+		vec3 world = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		vec3 offset = (world - me_shadow_light_sphere.xyz) * me_shadow_light_sphere.w;
+		shadow_falloff = pow(clamp(1.0 - dot(offset, offset), 0.0, 1.0), SHADOW_FALLOFF_EXPONENT);
+	}
+	METALLIC = 0.0;
+	SPECULAR = 0.0;
+	ROUGHNESS = 1.0;
 #ifdef ME_LIGHTMAP_MASKED
 	ALPHA = albedo.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.4;
@@ -131,4 +157,17 @@ void fragment() {
 #ifdef ME_LIGHTMAP_TRANSLUCENT
 	ALPHA = albedo.a;
 #endif
+}
+
+// [ME:CONFIRMED ModShadowProjectionPixelShader.usf, ModShadowCommon.usf]
+// the original multiplies the frame by lerp(lerp(1, ModulateColor, Att), 1,
+// Lit^2), Lit the PCF fraction unoccluded (uniform PCF: BranchingPCF is off).
+// The shadow light's colour is 1 - ModShadowColor and its energy -Fade, so
+// -LIGHT_COLOR / PI (LIGHT_COLOR is the linear colour times the energy and PI)
+// is (1 - ModulateColor). Att comes from shadow_falloff; ATTENUATION is Lit.
+void light() {
+	if (LIGHT_IS_DIRECTIONAL && LIGHT_COLOR.r + LIGHT_COLOR.g + LIGHT_COLOR.b < 0.0) {
+		vec3 strength = min(-LIGHT_COLOR / PI, vec3(1.0));
+		DIFFUSE_LIGHT -= strength * shadow_falloff * (1.0 - ATTENUATION * ATTENUATION);
+	}
 }

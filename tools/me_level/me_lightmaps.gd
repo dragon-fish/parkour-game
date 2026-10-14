@@ -127,8 +127,8 @@ static func samples_image(raw: PackedByteArray) -> Image:
 
 ## The placement's lightmap onto its drawn mesh. Runs AFTER the placement's
 ## own material overrides: an override the lightmap does not light (an unlit
-## sign) stays as it is.
-func apply(instance: MeshInstance3D, placement: Dictionary) -> void:
+## sign) stays as it is. Whether any surface now draws from the bake.
+func apply(instance: MeshInstance3D, placement: Dictionary) -> bool:
 	var lightmap: Dictionary = placement["lightmap"]
 	var overrides: Array = placement.get("materials", [])
 	var mesh: ArrayMesh = instance.mesh
@@ -136,8 +136,9 @@ func apply(instance: MeshInstance3D, placement: Dictionary) -> void:
 	var slots: PackedInt32Array = mesh.get_meta("surface_slots", PackedInt32Array())
 	var textures := textures_of(lightmap)
 	if textures.is_empty():
-		return
+		return false
 	counts[lightmap["kind"]] += 1
+	var lit := false
 	for surface in drawn.size():
 		var entry: Dictionary = drawn[surface]
 		var slot: int = slots[surface] if surface < slots.size() else -1
@@ -149,10 +150,12 @@ func apply(instance: MeshInstance3D, placement: Dictionary) -> void:
 			counts.unlit_surfaces += 1
 			continue
 		instance.set_surface_override_material(surface, material)
+		lit = true
 	set_parameters(instance, lightmap)
 	if lightmap["kind"] == "vertex":
 		instance.set_instance_shader_parameter(&"lightmap_vertex_offset",
 				int(_sample_offsets[Common.actor_id(str(placement["package"]), str(placement["name"]))]))
+	return lit
 
 
 ## Where the placement lies in its atlas and each coefficient's scale.

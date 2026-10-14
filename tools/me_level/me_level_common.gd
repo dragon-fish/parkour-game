@@ -78,6 +78,20 @@ const ACTOR_META := &"me_actor"
 ## On a Matinee node, the sequence it plays, as the extractor names it.
 const MATINEE_META := &"me_matinee"
 
+## Render layers of a lightmapped level and its shadow light (me_shadow_light.gd).
+## BAKED: the static world drawn from its bake (me_lightmap.gdshaderinc),
+## reached by no light but the shadow light, whose only job there is to darken
+## it where a character blocks the sun. CHARACTER_SHADOW: what casts into that
+## light -- the player's body, tagged at runtime -- and nothing else. Not the
+## static world: the bake already holds every shadow it throws, and casting
+## them again drew each one twice as dark. Not the level's movers, rigid bodies
+## or props either: [ME:CONFIRMED TdGame.u, Engine scripts] their light
+## environments are disabled by default (DynamicSMActor, SkeletalMeshActor:
+## bEnabled=false), so in the original only characters cast the modulated
+## shadow.
+const BAKED_LAYER := 1 << 10
+const CHARACTER_SHADOW_LAYER := 1 << 11
+
 
 static func actor_id(package: String, actor: String) -> String:
 	return "%s.%s" % [package_key(package), actor]
