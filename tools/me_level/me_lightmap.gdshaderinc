@@ -60,6 +60,11 @@ uniform sampler2D vertex_samples : filter_nearest, repeat_disable;
 // tutorial's draw calls and cost the overview shot 1.7 ms of CPU a frame.
 // Loaded from a scene file, Godot 4.7 leaves some instances reading the
 // defaults instead (a lit tent drew black): me_lightmapped.gd sets them again.
+// Every placement takes seven slots of the project's instance uniform buffer
+// (rendering/limits/global_shader_variables/buffer_size): at Godot's default
+// of 65536 the Escape ran out 4500 placements short, and those drew with the
+// defaults -- the whole atlas -- as did the player's body loaded after them.
+// Stormdrain alone needs some 91000. DO NOT lower it below 262144.
 instance uniform vec4 lightmap_uv_scale_bias = vec4(1.0, 1.0, 0.0, 0.0);
 instance uniform vec3 lightmap_scale_0 = vec3(1.0);
 instance uniform vec3 lightmap_scale_1 = vec3(1.0);

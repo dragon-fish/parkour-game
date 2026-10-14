@@ -65,4 +65,5 @@ lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
 environment/volumetric_fog/volume_size=128
 environment/volumetric_fog/volume_depth=128
 limits/cluster_builder/max_clustered_elements=1024
+limits/global_shader_variables/buffer_size=262144
 occlusion_culling/use_occlusion_culling=true
