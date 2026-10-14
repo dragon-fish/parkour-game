@@ -457,7 +457,7 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 
 ## The images a material's bake carries, each a texture file of its own in
 ## the library: the plain material and every lightmapped one draw the same
-## file. {albedo, normal, emissive}, whichever the bake has.
+## file. {albedo, diffuse, normal, emissive}, whichever the bake has.
 func _bake_textures(material_name: String) -> Dictionary:
 	if _textures.has(material_name):
 		return _textures[material_name]
@@ -465,6 +465,7 @@ func _bake_textures(material_name: String) -> Dictionary:
 	var hash := JSON.stringify([bake, LIBRARY_FORMAT]).sha256_text()
 	var out := {}
 	for kind: Array in [["albedo", "png", Image.COMPRESS_SOURCE_SRGB],
+			["diffuse", "diffuse_png", Image.COMPRESS_SOURCE_SRGB],
 			["normal", "normal_png", Image.COMPRESS_SOURCE_NORMAL],
 			["emissive", "emissive_png", Image.COMPRESS_SOURCE_SRGB]]:
 		if bake.has(kind[1]):
@@ -524,8 +525,11 @@ func lightmap_material(entry: Dictionary, atlas: Array) -> ShaderMaterial:
 	if _bakes.has(material_name):
 		var bake: Dictionary = _bakes[material_name]
 		var textures := _bake_textures(material_name)
-		if textures.has("albedo"):
-			material.set_shader_parameter("albedo_texture", textures["albedo"])
+		# A mirroring surface's colour without the sky the plain material's
+		# metallic stands in for: the lightmap multiplies it.
+		var albedo: Texture2D = textures.get("diffuse", textures.get("albedo"))
+		if albedo != null:
+			material.set_shader_parameter("albedo_texture", albedo)
 			material.set_shader_parameter("use_albedo_texture", true)
 		if textures.has("normal"):
 			material.set_shader_parameter("normal_texture", textures["normal"])

@@ -315,7 +315,13 @@ class MaterialBaker:
             self.stats['reflective'] += 1
             mirror = self._mirror(root_reader, root, params, ev.coordinate_filter, shape)
             if mirror is not None:
-                albedo, share, emissive_sheen = mirror
+                albedo, share, emissive_sheen, diffuse = mirror
+                # The colour without the sky in it, for a surface the
+                # original's lightmap lights: it multiplies DiffuseColor,
+                # cube sample included, and the white of a cube at 1 turned
+                # every lit window white. [ME:INFERRED] the towers' cubes
+                # reflect a dark city; the cube's own texture is not read.
+                out['diffuse_png'] = png_base64(np.concatenate([np.clip(diffuse, 0.0, 1.0), rgba[..., 3:]], -1))
                 rgba = np.concatenate([albedo, rgba[..., 3:]], -1)
                 out['png'] = png_base64(rgba)
                 # The share every pixel has is a sheen over the whole surface,
@@ -390,8 +396,8 @@ class MaterialBaker:
         return np.concatenate([rgb, np.ones(shape + (1,))], -1)
 
     def _mirror(self, mr, root, params, coordinate, shape):
-        """(albedo HxWx3, mirror share HxW, sheen share) where a cube map puts
-        the sky into the surface, or None.
+        """(albedo HxWx3, mirror share HxW, sheen share, diffuse HxWx3 with
+        the cube at 0) where a cube map puts the sky into the surface, or None.
 
         Evaluated with the cube at 0 and at 1: what changes is the part of the
         colour that comes from the sky. Through DiffuseColor that is a masked
@@ -427,7 +433,7 @@ class MaterialBaker:
         sheen = float(np.clip(np.abs(sheen_sky).mean(-1) / brightness, 0.0, 1.0).mean())
         if mirror.max() < 0.05 and sheen < 0.01:
             return None
-        return albedo, mirror, sheen
+        return albedo, mirror, sheen, diffuse
 
     def _collect_params(self, mr, idx, params, baker=None, depth=0):
         """Walk MaterialInstanceConstant parents collecting overrides, nearest
