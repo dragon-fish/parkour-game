@@ -40,6 +40,18 @@ EMISSION_MIN = 0.05
 FRESNEL_FACING = 0.2
 # Size of a coordinate gradient baked on its own, with no texture to set one.
 COORDINATE_GRID = (64, 64)
+# What a coverage input may reach and still be one number on every pixel of
+# every placement: constants, parameters and arithmetic on them. A texture, a
+# vertex or particle colour, a depth, fresnel or camera term, a time or a
+# static switch (whose instance overrides are not collected) varies, or may,
+# and DO NOT add one: a surface read as covering nothing is not drawn at all.
+CONSTANT_NODES = frozenset('MaterialExpression' + n for n in (
+    'Constant', 'Constant2Vector', 'Constant3Vector', 'Constant4Vector', 'ScalarParameter', 'VectorParameter',
+    'Add', 'Subtract', 'Multiply', 'Divide', 'OneMinus', 'ComponentMask', 'AppendVector', 'ConstantClamp',
+    'Clamp', 'Power', 'LinearInterpolate'))
+# [ME:CONFIRMED Engine.u Default__Material] the OpacityMaskClipValue a masked
+# material clips at when it writes none of its own.
+DEFAULT_OPACITY_MASK_CLIP = 0.3333
 # A tangent-space normal points mostly out of the surface, so its blue mean is
 # near 1. Below this the evaluation did not produce a normal map: see
 # MaterialBaker._normal().
@@ -345,6 +357,38 @@ class MaterialBaker:
             out['roughness'] = round(math.sqrt(2.0 / (max(out['specular_power'], 0.0) + 2.0)), 4)
         return out
 
+    def draws_nothing(self, mr, idx):
+        """Whether a material covers no pixel wherever it is drawn: translucent
+        with an Opacity that is a constant 0, or masked with an OpacityMask that
+        is a constant under its clip value. An unconnected input is 1 in the
+        engine, and covers everything.
+
+        [ME:CONFIRMED] the tutorial's PX_LightBlockMeshes.Materials.BlankBsp is
+        translucent and unlit with Opacity a Constant left at 0 and nothing
+        else connected. [ME:INFERRED from the package] the boxes it is on
+        (PX_SlideUnder_01, under the slide duct) are there to block the
+        PhysX-only light. Read without this it has no bake, and the builder
+        drew it as the family colour at 35% -- two grey boxes the original
+        never shows.
+        """
+        params = {}
+        root_reader, root = self._collect_params(mr, idx, params)
+        if not root_reader:
+            return False
+        props = root_reader.props(root)[0] or {}
+        blend = props.get('BlendMode', 'BLEND_Opaque')
+        if blend not in ('BLEND_Translucent', 'BLEND_Masked'):
+            return False
+        masked = blend == 'BLEND_Masked'
+        ev = Evaluator(self, root_reader, params)
+        link = ev.inputs(root).get('OpacityMask' if masked else 'Opacity')
+        if not link or link['expr'] <= 0 or not ev.is_constant(link['expr']):
+            return False
+        coverage = float(np.max(ev.value(link, np.ones(1))[..., :1]))
+        if masked:
+            return coverage < float(props.get('OpacityMaskClipValue', DEFAULT_OPACITY_MASK_CLIP))
+        return coverage <= 0.0
+
     def _emission(self, mr, root, params, coordinate, shape):
         """HxWx3 of the light a lit surface gives off itself, the sky's share
         left out, or None when it gives off none worth drawing: the ads and
@@ -529,6 +573,14 @@ class Evaluator:
         if ref > 0:
             return pkg.class_of(pkg.exports[ref - 1])
         return pkg.imports[-ref - 1].get('class', '')
+
+    def is_constant(self, idx, depth=0):
+        """Whether expression `idx` reaches nothing but CONSTANT_NODES."""
+        cls = self.mr.pkg.class_of(self.mr.pkg.exports[idx - 1])
+        if cls not in CONSTANT_NODES or depth > 32:
+            return False
+        return all(self.is_constant(link['expr'], depth + 1)
+                   for link in self.inputs(idx).values() if link and link['expr'] > 0)
 
     def props(self, idx):
         return {name: self.mr._value(typ, extra, q, sz) for (name, typ, extra, q, sz, _arr) in expression_chain(self.mr, idx)}

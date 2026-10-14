@@ -119,7 +119,10 @@ original and sees nothing here.
 MaterialInstance parents to the root Material for `BlendMode` and
 `LightingModel`; the mesh library maps additive, translucent, modulate and
 unlit surfaces to distinct materials. Masked surfaces (gratings) are drawn
-solid until textures exist.
+solid until textures exist. A translucent material whose Opacity is a constant
+0 (or a masked one whose mask is a constant under its clip) covers nothing:
+the surface carries `invisible` and collides without being drawn. The
+tutorial's `BlankBsp` boxes under the slide duct are the case that showed it.
 
 **Two-sided means the material says so.** `TwoSided` is read from the root
 Material; masked and translucent are not two-sided by themselves, and drawing

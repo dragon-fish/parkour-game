@@ -236,6 +236,15 @@ class MeshTable:
                     self._materials[key] = {'blend': blend, 'unlit': unlit, 'nondirectional': nondirectional,
                                             'two_sided': two_sided,
                                             'uncontrolled_slide': self._phys_flag(phys, 'bEnableUncontrolledSlide')}
+                    # Written only where it holds: the library hashes the whole
+                    # record, and a key on every surface would rebuild every
+                    # mesh of every level once for nothing.
+                    rr, ri = self.baker.resolve(mr, reference)
+                    if rr and self.baker.draws_nothing(rr, ri):
+                        self._materials[key]['invisible'] = True
+                        names = self.report.setdefault('invisible_materials', [])
+                        if rr.pkg.full_name(ri) not in names:
+                            names.append(rr.pkg.full_name(ri))
                     break
                 idx = parent[1]
             else:
