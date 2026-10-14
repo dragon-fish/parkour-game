@@ -454,8 +454,9 @@ static func sprite_material(material: Dictionary, params: Dictionary, sheet: Tex
 
 
 ## How far behind a sprite the scene has to be before the sprite is fully
-## opaque, in metres. [ME:INFERRED UE3 MaterialTemplate DepthBiasedAlpha]
-## (1 - Bias) * BiasScale uu: the smoke's 0.5 and 400 fade it in over 2 m.
+## opaque, in metres. [ME:CONFIRMED Engine/Shaders/MaterialTemplate.usf
+## DepthBiasedAlpha] saturate((scene depth - sprite depth) / ((1 - Bias) *
+## BiasScale)) in uu: the smoke's 0.5 and 400 fade it in over 2 m.
 static func depth_fade_m(fade: Dictionary) -> float:
 	if fade.is_empty():
 		return 0.0

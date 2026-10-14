@@ -10,8 +10,10 @@ render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabl
 // translucent and unlit. VertexColor is the particle's colour.
 //
 // The quad is the sprite's full width: a particle's size is its whole extent,
-// not a radius. [ME:INFERRED UE3 ParticleSpriteVertexFactory: corners at
-// Size * (TexCoord - 0.5)]
+// not a radius. [ME:CONFIRMED Engine/Shaders/ParticleSpriteVertexFactory.usf]
+// corners at Size * (TexCoord - 0.5) along the camera's unit right and up;
+// [ME:INFERRED] the vertex's Size is the particle's times the component's
+// scale, not doubled on the way.
 
 uniform sampler2D sheet : source_color, filter_linear_mipmap, repeat_disable;
 // The sheet's grid, columns by rows, and whether the frame between two sub
