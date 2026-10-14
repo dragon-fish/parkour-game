@@ -57,3 +57,25 @@ class ToneMapTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CharacterShadowTests(unittest.TestCase):
+    """Which lights a pawn's shadow environment takes in, and in what units."""
+
+    def test_a_sun_counts_its_live_brightness_in_linear_colour_not_its_bake(self):
+        light = E.character_shadow_light('DirectionalLight', {'Brightness': 2.0, 'LightColor': ('color', 1.0, 0.5, 0.0)}, {})
+        self.assertEqual(light['kind'], 'sun')
+        self.assertAlmostEqual(light['intensity'][1], 2.0 * 0.5 ** 2.2, places=4)
+        self.assertTrue(light['traced'])
+
+    def test_a_light_off_the_composite_dynamic_channel_is_not_seen(self):
+        tagged = {'LightingChannels': {'CompositeDynamic': False, 'Dynamic': True}}
+        self.assertIsNone(E.character_shadow_light('DirectionalLight', {}, tagged))
+        self.assertIsNone(E.character_shadow_light('SkyLight', {}, {'bCastCompositeShadow': False}))
+        self.assertIsNone(E.character_shadow_light('PointLight', {}, {}))
+
+    def test_a_sky_light_is_its_two_hemispheres(self):
+        light = E.character_shadow_light('SkyLight', {'Brightness': 0.5, 'LowerBrightness': 0.25,
+                                                      'LowerColor': ('color', 1.0, 1.0, 1.0)}, {})
+        self.assertEqual(light['upper'], [0.5, 0.5, 0.5])
+        self.assertEqual(light['lower'], [0.25, 0.25, 0.25])

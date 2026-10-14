@@ -325,7 +325,19 @@ sampled at the nodes' own `ShadowTexCoord`s.
   the one block they take.
 - **A mover or a rigid body has none.** InterpActors and KActors carry no
   LODData: the original lights them live (DynamicLightEnvironment), and so does
-  the level here. Static geometry is unshaded and takes no live light at all.
+  the level here. Static geometry takes no live light at all: its one light is
+  the shadow light, which only darkens it where the player's body blocks the sun.
+
+**The player's shadow is the character light environment's, not the bake's.**
+`environment.character_shadow_lights()` writes the manifest's
+`environment.character_shadow`: the lights a pawn's DynamicLightEnvironment
+casts its modulated shadow from. Only through the CompositeDynamic channel (the
+pawn's meshes are on Dynamic alone), and only with bCastCompositeShadow (by
+default the directional and sky lights). A sun counts its live Brightness *
+LightColor ^ 2.2 -- not BakerBrightness -- and whether the pawn traces it; a sky
+light its two hemispheres. In the tutorial that is DirectionalLight_0 (1.95, not
+the bake's 2.5) and SkyLight_0; the PhysXOnly lights reach no one.
+`tools/me_level/me_shadow_light.gd` builds the shadow from them.
 - **Tangent space is the original's.** The directional weights need only the
   material's tangent-space normal, so the baked normal map's green is flipped
   back. The specular term needs the frame too: `static_mesh.godot_tangent()`

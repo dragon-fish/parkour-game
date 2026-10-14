@@ -281,3 +281,69 @@ def baked_sun(mr):
             'brightness': round(float(props.get('BakerBrightness', 1.0)), 4),
         }
     return None
+
+
+# [ME:CONFIRMED MirrorsEdge.exe 0xff2810, 0xff1490, 0xd321a0] a pawn's light
+# environment sees a light only through its CompositeDynamic channel: the
+# pawn's meshes store no LightingChannels and are initialised to Dynamic alone,
+# and a light's CompositeDynamic is read as Dynamic. What it then adds to the
+# SHADOW environment (the one its modulated shadow is cast from) is every such
+# light whose bCastCompositeShadow is set -- by default the directional and
+# sky lights, never a point or spot. (_local/me-re findings on the DLE.)
+CHARACTER_SHADOW_CLASSES = ('DirectionalLight', 'SkyLight')
+
+
+def _linear(color):
+    """[ME:CONFIRMED 0x115e240] a light's FColor as the light environment reads
+    it: (byte / 255) ^ 2.2, a plain power, not the sRGB curve."""
+    if isinstance(color, tuple) and color and color[0] == 'color':
+        return [c ** 2.2 for c in color[1:4]]
+    return [1.0, 1.0, 1.0]
+
+
+def character_shadow_light(cls, component, tagged, rotation=(0, 0, 0)):
+    """One light's part in a pawn's shadow environment, or None.
+
+    `component` is the light component's properties with its defaults,
+    `tagged` only those it stores (where a channel switched off shows).
+    [ME:CONFIRMED 0xed9850, 0xff2310] a directional light adds Brightness *
+    LightColor from where it shines, a sky light Brightness * LightColor from
+    above and LowerBrightness * LowerColor from below; the Baker* fields are
+    not read. A directional light that casts static shadows is traced from
+    the pawn: blocked, it adds nothing."""
+    if cls not in CHARACTER_SHADOW_CLASSES or tagged.get('bEnabled') is False:
+        return None
+    channels = tagged.get('LightingChannels') if isinstance(tagged.get('LightingChannels'), dict) else {}
+    if channels.get('CompositeDynamic') is False or tagged.get('bCastCompositeShadow') is False:
+        return None
+    brightness = float(component.get('Brightness', 1.0))
+    color = _linear(component.get('LightColor'))
+    if cls == 'SkyLight':
+        lower = float(component.get('LowerBrightness', 0.0))
+        lower_color = _linear(component.get('LowerColor'))
+        return {'kind': 'sky', 'upper': [round(brightness * c, 5) for c in color],
+                'lower': [round(lower * c, 5) for c in lower_color]}
+    forward = godot_basis(rotation or (0, 0, 0), (1.0, 1.0, 1.0))[0]
+    return {'kind': 'sun', 'direction': [round(-c, 5) for c in forward],
+            'intensity': [round(brightness * c, 5) for c in color],
+            'traced': component.get('CastShadows', True) is not False and component.get('CastStaticShadows', True) is not False}
+
+
+def character_shadow_lights(mr):
+    """Every light of this package a pawn's shadow environment takes in."""
+    pkg = mr.pkg
+    out = []
+    for i, e in enumerate(pkg.exports, 1):
+        cls = pkg.class_of(e)
+        if cls not in CHARACTER_SHADOW_CLASSES or outer_class(pkg, e) != 'Level':
+            continue
+        props, _ = mr.props_inherited(i)
+        component_idx = ref_export((props or {}).get('LightComponent'))
+        if not component_idx:
+            continue
+        component = mr.props_inherited(component_idx)[0] or {}
+        light = character_shadow_light(cls, component, _props(mr, component_idx), props.get('Rotation'))
+        if light:
+            light.update({'package': mr.label, 'name': e['name']})
+            out.append(light)
+    return out

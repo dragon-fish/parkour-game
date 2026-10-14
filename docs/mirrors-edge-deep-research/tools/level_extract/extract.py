@@ -998,6 +998,12 @@ def main(config_path):
             look['sun'] = sun
             look['sun_direction'] = sun['direction']
             break
+    # What a character's light environment casts its shadow from (the sun and
+    # sky light it sees, not the bake's).
+    if look:
+        look['character_shadow'] = [light for name in packages.names
+                                    for light in environment.character_shadow_lights(packages.reader(name))]
+        report['character_shadow_lights'] = ['%s.%s' % (l['package'], l['name']) for l in look['character_shadow']]
     # The areas the original grades apart: inside one, its settings replace
     # the world's, the world's PC modifier still added where its own is 0.
     if look:
