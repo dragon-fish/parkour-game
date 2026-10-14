@@ -36,12 +36,21 @@ extends Node3D
 #     screen-edge fade drew an oval of city on every large facade) and no sky
 #     fallback (clouds on floors indoors).
 #
+# A LIGHTMAPPED level (every one the extractor now writes) draws its static
+# world with the original's own bake (me_lightmap.gdshaderinc) and grades it
+# with the original's tone mapping (me_tone_map.gd): the sun and the lamps
+# light only what moves, there is no SDFGI, and the fixed exposure and the
+# ControlPoint curves below are the older path's, kept for a geometry scene
+# built before the bake was read.
+#
 # The data fields below come from the manifest (environment.py). The dials
 # are judged against the owner's screenshots of the original
 # (.private/docs/me-reference-shots) and are overridden per level from the
 # level config's "look" block, by name.
 
 const Lut := preload("res://tools/me_level/me_tone_curve.gd")
+const ToneMap := preload("res://tools/me_level/me_tone_map.gd")
+const VolumeScript := preload("res://tools/me_level/me_post_process_volume.gd")
 const SKY_SHADER := preload("res://tools/me_level/me_sky.gdshader")
 const DOME_SHADER := preload("res://tools/me_level/me_dome.gdshader")
 const CLOUD_PANORAMA := preload("res://assets/sky/kloofendal_48d_partly_cloudy_puresky_2k.hdr")
@@ -72,6 +81,18 @@ const DOME_RADIUS_M := 2500.0
 @export var curve_b := PackedVector2Array()
 @export var curve_a := PackedVector2Array()
 @export var midtones := Vector3.ONE
+## Whether the level's static geometry is drawn with the original's lightmaps.
+## Data, not a dial: the geometry builder sets it when the manifest has them.
+@export var lightmapped := false
+## The world's tone mapping settings (me_tone_settings.gd). Inside one of the
+## PostProcessVolumes children, that volume's replace them.
+@export var tone: Resource = null
+## [ME:CONFIRMED TM1] the player's Brightness slider: DisplayGamma = Brightness
+## / 10 * 1.5 + 1.25, 2.0 at the game's default of 5.
+@export var display_gamma := 2.0
+## [ME:CONFIRMED TM1] the Contrast slider: Contrast / 10 * 0.6 + 0.7, 1.0 at
+## the default of 5. Added to every curve segment's slope.
+@export var contrast := 1.0
 
 # ---- dials ----
 
@@ -151,6 +172,12 @@ const NOMINAL_SUN_BRIGHTNESS := 2.0
 @export var volumetric_distance_m := 64.0
 
 var _dome: MeshInstance3D
+var _tone_effect: CompositorEffect
+var _tone_now: Resource
+var _tone_target: Resource
+var _volumes: Array[Node] = []
+var _blend_start := 0.0
+var _blend_last := 0.0
 
 
 func _ready() -> void:
@@ -164,7 +191,10 @@ func _ready() -> void:
 		var env: Environment = world.environment.duplicate()
 		_apply_sky(env)
 		_apply_light(env)
-		_apply_post(env)
+		if lightmapped and tone != null:
+			_apply_tone_map(env, world)
+		else:
+			_apply_post(env)
 		world.environment = env
 		# The base level's auto exposure would undo the fixed exposure above.
 		world.camera_attributes = null
@@ -174,12 +204,12 @@ func _ready() -> void:
 
 
 ## The dome rides with the camera: what it shows depends on direction only.
-func _process(_delta: float) -> void:
-	if _dome == null:
-		return
+func _process(delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
-	if camera != null:
+	if camera != null and _dome != null:
 		_dome.global_position = camera.global_position
+	if camera != null and _tone_effect != null:
+		_update_tone(camera.global_position, delta)
 
 
 func _sky_parameters(material: ShaderMaterial, energy: float) -> void:
@@ -249,6 +279,15 @@ func _add_dome() -> void:
 
 
 func _apply_light(env: Environment) -> void:
+	if lightmapped:
+		# The bake is the world's light, and its occlusion: nothing static takes
+		# live light, so neither GI nor SSAO has anything left to do.
+		env.sdfgi_enabled = false
+		env.ssao_enabled = false
+		env.ssil_enabled = false
+		env.ssr_enabled = false
+		env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+		return
 	env.sdfgi_enabled = true
 	# Eight cascades, not four: the reflections SDFGI gives end where its
 	# cascades do, and at four that edge drew a sphere on every tower's
@@ -285,6 +324,57 @@ func _apply_post(env: Environment) -> void:
 	env.adjustment_contrast = 1.0
 	env.adjustment_saturation = 1.0
 	env.adjustment_color_correction = Lut.texture(curve_r, curve_g, curve_b, curve_a, midtones)
+
+
+## The original's eye adaptation and tone mapping, on the HDR frame
+## (me_tone_map.gd). Godot's own tone mapper is left linear at exposure 1 and
+## everything after the original's pass is off: its output is what the screen
+## shows. [ME:CONFIRMED TM1] bloom is added before the original's pass
+## (DOFAndBloom, modded); not reproduced, and Godot's glow, which runs after
+## this pass on its output, would not stand in for it.
+func _apply_tone_map(env: Environment, world: WorldEnvironment) -> void:
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	env.tonemap_exposure = 1.0
+	env.tonemap_white = 1.0
+	env.glow_enabled = false
+	env.adjustment_enabled = false
+	_tone_effect = ToneMap.new()
+	_tone_effect.set("display_gamma", display_gamma)
+	_tone_effect.set("contrast", contrast)
+	var compositor := Compositor.new()
+	compositor.compositor_effects = [_tone_effect]
+	world.compositor = compositor
+	_tone_now = tone.duplicate()
+	_tone_target = tone
+	_tone_now.apply(_tone_effect)
+	for node in find_children("*", "Node3D", true, false):
+		if node.get_script() == VolumeScript and node.get("enabled"):
+			_volumes.append(node)
+	_volumes.sort_custom(func(a: Node, b: Node) -> bool: return a.get("priority") > b.get("priority"))
+
+
+## [ME:CONFIRMED TM1 0x00c15ee0, 0x00b3e810] the settings in force are those of
+## the first enabled volume by priority that holds the view, the world's
+## otherwise, and the view blends toward them: each frame by dT over the time
+## left of the new settings' Scene_InterpolationDuration since they were chosen.
+func _update_tone(at: Vector3, delta: float) -> void:
+	var wanted: Resource = tone
+	for volume in _volumes:
+		if volume.contains(at):
+			wanted = volume.get("tone")
+			break
+	var now := Time.get_ticks_msec() / 1000.0
+	if wanted != _tone_target:
+		_tone_target = wanted
+		_blend_start = now
+	var elapsed := maxf(_blend_last - _blend_start, 0.0)
+	var remaining := maxf(float(wanted.get("interpolation_s")) - elapsed, 0.0)
+	var dt := maxf(now - _blend_last, 0.0) if _blend_last > 0.0 else 0.0
+	var fade := clampf(dt / remaining, 0.0, 1.0) if remaining > dt else 1.0
+	_blend_last = now
+	_tone_now.blend_toward(wanted, fade)
+	_tone_now.apply(_tone_effect)
+	_tone_effect.set("delta", delta)
 
 
 ## The haze as Arena's FogConfig, which Arena writes into the Environment
@@ -347,9 +437,11 @@ func _exposure() -> float:
 
 
 ## The level's exposure, for what is built to be seen at a brightness of its
-## own whatever the exposure is (the particle sprites; me_particles.gd).
+## own whatever the exposure is (the particle sprites; me_particles.gd). 1 for
+## a lightmapped level: its frame is in the original's own units and exposed
+## as the original exposes it, sprites included.
 func exposure() -> float:
-	return _exposure()
+	return 1.0 if lightmapped else _exposure()
 
 
 func _arena() -> Arena:

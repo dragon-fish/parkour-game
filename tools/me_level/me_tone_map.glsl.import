@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://v1so8gldja42"
+path="res://.godot/imported/me_tone_map.glsl-d0c64b60605a26eeb8a979cd3a6a61b2.res"
+
+[deps]
+
+source_file="res://tools/me_level/me_tone_map.glsl"
+dest_files=["res://.godot/imported/me_tone_map.glsl-d0c64b60605a26eeb8a979cd3a6a61b2.res"]
+
+[params]
+

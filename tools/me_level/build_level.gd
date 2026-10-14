@@ -76,7 +76,8 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	# Taken from the whole manifest: a section's geometry carries no look of its
 	# own, and its sprites are exposed by the chapter's.
 	if manifest.get("environment") is Dictionary:
-		var environment: Node3D = GeometryBuilder._environment(manifest["environment"], _look)
+		var environment: Node3D = GeometryBuilder._environment(manifest["environment"], _look,
+				GeometryBuilder.has_lightmaps(manifest))
 		_particles.exposure = environment.exposure()
 		environment.free()
 	manifest["puppet_bodies"] = _puppet_bodies(manifest, dir.path_join("puppets"), (paths.shell as String).get_basename() + "_puppets")

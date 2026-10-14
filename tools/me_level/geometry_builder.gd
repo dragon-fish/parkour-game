@@ -10,6 +10,8 @@ const Common := preload("res://tools/me_level/me_level_common.gd")
 const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const ENVIRONMENT_SCRIPT := preload("res://tools/me_level/me_environment.gd")
 const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
+const TONE_SETTINGS := preload("res://tools/me_level/me_tone_settings.gd")
+const POST_PROCESS_VOLUME_SCRIPT := preload("res://tools/me_level/me_post_process_volume.gd")
 
 ## Meshes a hand grips. InterestLine volumes drive those moves, so a solid mesh
 ## only stops the capsule short of the line it is reaching for.
@@ -223,7 +225,10 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	root.add_child(movers)
 	var look = manifest.get("environment")
 	if look is Dictionary:
-		root.add_child(_environment(look, look_dials))
+		# A split chapter's look rides on its chapter-wide geometry, whose own
+		# placements may carry no bake: the whole chapter's do.
+		var whole := {placements = manifest.get("all_placements", manifest["placements"]), bsp = manifest["bsp"]}
+		root.add_child(_environment(look, look_dials, lightmaps != null and has_lightmaps(whole)))
 	var nodes_of := {}
 	for node: Node3D in geometry.get_children():
 		nodes_of.get_or_add(node.get_meta(Common.PACKAGE_META), []).append(node)
@@ -418,10 +423,48 @@ static func _add_occluding(instance: MeshInstance3D, xform: Transform3D,
 
 
 ## The level's own look, applied at runtime to its Arena (me_environment.gd).
-static func _environment(look: Dictionary, dials: Dictionary) -> Node3D:
+## Whether any placement or BSP face of the manifest carries the original's bake.
+static func has_lightmaps(manifest: Dictionary) -> bool:
+	for p: Dictionary in manifest.get("placements", []):
+		if p.has("lightmap"):
+			return true
+	for f: Dictionary in manifest.get("bsp", []):
+		if f.has("lightmap"):
+			return true
+	return false
+
+
+static func _environment(look: Dictionary, dials: Dictionary, lightmapped := false) -> Node3D:
 	var node := Node3D.new()
 	node.name = "Environment"
 	node.set_script(ENVIRONMENT_SCRIPT)
+	node.set("lightmapped", lightmapped)
+	if look.has("tone_map"):
+		node.set("tone", TONE_SETTINGS.from_manifest(look["tone_map"]))
+	var volumes := Node3D.new()
+	volumes.name = "PostProcessVolumes"
+	var volume_names := Common.NameAllocator.new()
+	for entry: Dictionary in look.get("volumes", []):
+		var volume := Node3D.new()
+		volume.set_script(POST_PROCESS_VOLUME_SCRIPT)
+		volume.name = volume_names.take(str(entry["name"]))
+		volume.set("priority", float(entry["priority"]))
+		volume.set("enabled", bool(entry["enabled"]))
+		var planes: Array[Plane] = []
+		var sizes := PackedInt32Array()
+		for hull: Array in entry["planes"]:
+			sizes.append(hull.size())
+			for q: Array in hull:
+				planes.append(Plane(Vector3(q[0], q[1], q[2]), float(q[3])))
+		volume.set("planes", planes)
+		volume.set("hull_sizes", sizes)
+		volume.set("tone", TONE_SETTINGS.from_manifest(entry["tone_map"]))
+		volume.set_meta(Common.PACKAGE_META, Common.package_key(str(entry["package"])))
+		volumes.add_child(volume)
+	if volumes.get_child_count() > 0:
+		node.add_child(volumes)
+	else:
+		volumes.free()
 	if look.has("sun_direction"):
 		node.set("sun_direction", Common.v3(look["sun_direction"]))
 	var sun: Dictionary = look.get("sun", {})
