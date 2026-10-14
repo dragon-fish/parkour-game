@@ -107,7 +107,7 @@ func _physics_process(delta: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if now >= _next_update:
 		_tag_casters(player)
-		_target = shadow_environment(_sun_visibility(player, centre))
+		_target = shadow_environment(_sun_visibility(centre))
 		var camera := get_viewport().get_camera_3d()
 		var distance := camera.global_position.distance_to(centre) if camera != null else 0.0
 		_next_update = now + update_interval_s * randf_range(0.8, 1.2) \
@@ -218,19 +218,19 @@ static func _empty_sh() -> Array:
 	return out
 
 
-## [ME:CONFIRMED DLE: NumVolumeVisibilitySamples 1, from the bounds centre]
-## Which suns reach the pawn: one trace each against the level, 100000 uu
-## long; an untraced sun always does.
-func _sun_visibility(player: Node3D, centre: Vector3) -> Array:
+## [ME:CONFIRMED DLE 0xff11e0: NumVolumeVisibilitySamples 1, from the bounds
+## centre] Which suns reach the pawn: one trace each, 100000 uu long, against
+## what casts shadows (Common.SUN_OCCLUDER_LAYER), not against what the pawn
+## collides with; an untraced sun always does.
+func _sun_visibility(centre: Vector3) -> Array:
 	var space := get_world_3d().direct_space_state
 	var out := []
 	for i in sun_directions.size():
 		if i < sun_traced.size() and not sun_traced[i]:
 			out.append(true)
 			continue
-		var query := PhysicsRayQueryParameters3D.create(centre, centre + sun_directions[i].normalized() * TRACE_M)
-		if player is CollisionObject3D:
-			query.exclude = [(player as CollisionObject3D).get_rid()]
+		var query := PhysicsRayQueryParameters3D.create(centre, centre + sun_directions[i].normalized() * TRACE_M,
+				Common.SUN_OCCLUDER_LAYER)
 		out.append(space.intersect_ray(query).is_empty())
 	return out
 

@@ -92,6 +92,19 @@ const MATINEE_META := &"me_matinee"
 const BAKED_LAYER := 1 << 10
 const CHARACTER_SHADOW_LAYER := 1 << 11
 
+## PHYSICS layer of what keeps the sun off a character: the only layer the
+## shadow light's sun trace (me_shadow_light.gd) reads, and nothing masks it.
+## [ME:CONFIRMED MirrorsEdge.exe 0xff11e0, 0xdbaef0] the original's light
+## visibility test is a line check with TRACE_ShadowCast (flags 0x2397), and a
+## static mesh answers that one with the triangles of its colliding elements,
+## never its hulls. So the meshes the runner passes through (hull-less props,
+## the far shells, the pipes a hand grips) keep the sun off her, and the
+## invisible blocking volumes and air walls (TRACE_Volumes is not in the
+## flags) do not. DO NOT point the sun trace back at the movement collision:
+## a fifth of the tutorial's rooftops then stood in a sun the bake has them
+## out of, and the shadow swung from straight down to the sun's slant there.
+const SUN_OCCLUDER_LAYER := 1 << 21
+
 
 static func actor_id(package: String, actor: String) -> String:
 	return "%s.%s" % [package_key(package), actor]

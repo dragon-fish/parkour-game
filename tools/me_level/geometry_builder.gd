@@ -95,7 +95,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	var names := Common.NameAllocator.new()
 	var mover_nodes := {}
 	var library := {}
-	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0, stretched = 0, slide = 0}
+	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0, stretched = 0, slide = 0, sun_occluder = 0}
 	_stretched_shapes.clear()
 	for placement: Dictionary in manifest["placements"]:
 		var mesh_name: String = placement["mesh"]
@@ -218,6 +218,22 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 				_add_shape(chute, _stretched(mesh.get_meta("slide_shape"), stretch), "Collision", offset)
 				node.add_child(chute)
 				counts.slide += 1
+		# What keeps the sun off a character (Common.SUN_OCCLUDER_LAYER): the
+		# colliding triangles of whatever casts a shadow, drawn or bake-only,
+		# hull or none. Not a hidden placement: designer collision with no
+		# picture throws no shadow in the bake either.
+		if not cloth and rigid.is_empty() and instance.visible and mesh.has_meta("per_poly_shape") \
+				and instance.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			if collision == "per_poly" and node is CollisionObject3D:
+				(node as CollisionObject3D).collision_layer |= Common.SUN_OCCLUDER_LAYER
+			else:
+				var occluder := StaticBody3D.new()
+				occluder.name = "SunOccluder"
+				occluder.collision_layer = Common.SUN_OCCLUDER_LAYER
+				occluder.collision_mask = 0
+				_add_shape(occluder, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision", offset)
+				node.add_child(occluder)
+			counts.sun_occluder += 1
 		(movers if mover else geometry).add_child(node)
 	_nest_movers(mover_nodes, manifest["placements"])
 	print("[me_level] placements: ", counts)
@@ -940,6 +956,9 @@ func _build_bsp(faces: Array) -> StaticBody3D:
 	# ceiling and air duct the same grey.
 	var body := StaticBody3D.new()
 	body.name = "BSP"
+	# [ME:CONFIRMED 0xff11e0] the sun trace takes the level's BSP as well
+	# (TRACE_Level): it keeps the sun off a character too.
+	body.collision_layer = 1 | Common.SUN_OCCLUDER_LAYER
 	var triangles := PackedVector3Array()
 	var tools := {}
 	var entries := {}

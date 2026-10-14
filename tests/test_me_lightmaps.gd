@@ -237,3 +237,65 @@ func test_the_tutorials_runner_vision_paints_its_baked_surfaces_in_their_lightma
 	assert_gt(checked, 50, "too few baked Runner Vision surfaces to say anything")
 	assert_eq(bad, [] as Array[String], "baked Runner Vision surfaces painted by an overlay")
 	root.free()
+
+
+## [ME:CONFIRMED 0xff11e0] The sun trace is a shadow-casting trace: what the
+## pawn collides with does not stop it, what casts a shadow does.
+func test_the_sun_trace_reads_what_casts_shadows_not_what_collides() -> void:
+	var light := ShadowLight.new()
+	light.sun_directions = PackedVector3Array([Vector3.UP])
+	light.sun_traced = [true] as Array[bool]
+	add_child_autofree(light)
+	var roof := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4.0, 0.5, 4.0)
+	shape.shape = box
+	roof.add_child(shape)
+	roof.collision_layer = 1
+	add_child_autofree(roof)
+	roof.global_position = Vector3(0.0, 5.0, 0.0)
+	await wait_physics_frames(2)
+	assert_eq(light._sun_visibility(Vector3.ZERO), [true], "movement collision kept the sun out")
+	roof.collision_layer = Common.SUN_OCCLUDER_LAYER
+	await wait_physics_frames(2)
+	assert_eq(light._sun_visibility(Vector3.ZERO), [false], "a shadow caster let the sun through")
+
+
+## Every drawn shadow caster with colliding triangles keeps the sun off the
+## player, whatever it collides with; designer collision with no picture and
+## the level's volumes do not.
+func test_the_tutorials_sun_occluders_are_its_shadow_casters() -> void:
+	if not ResourceLoader.exists(TUTORIAL_GEOMETRY):
+		pass_test("no tutorial geometry on this machine")
+		return
+	var root: Node = (load(TUTORIAL_GEOMETRY) as PackedScene).instantiate()
+	var missing: Array[String] = []
+	var checked := 0
+	for node in root.find_children("Mesh", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		var placement := mesh_instance.get_parent()
+		if not placement.has_meta("me_collision") or placement is RigidBody3D or mesh_instance is SoftBody3D:
+			continue
+		if not mesh_instance.visible or not (mesh_instance.mesh as ArrayMesh).has_meta("per_poly_shape"):
+			continue
+		checked += 1
+		if not _occludes(placement):
+			missing.append(String(placement.name))
+	assert_gt(checked, 0, "test setup: no shadow casters found")
+	assert_eq(missing, [] as Array[String], "shadow casters the sun goes through")
+	for node in root.find_children("*", "CollisionObject3D", true, false):
+		var body := node as CollisionObject3D
+		if body.collision_layer & Common.SUN_OCCLUDER_LAYER == 0 or body.name.begins_with("BSP"):
+			continue
+		var placement: Node = body.get_parent() if body.name == "SunOccluder" else body
+		var picture := placement.get_node_or_null("Mesh") as MeshInstance3D
+		assert_true(picture != null and picture.visible, "%s keeps the sun out with nothing drawn" % placement.name)
+	root.free()
+
+
+func _occludes(placement: Node) -> bool:
+	if placement is CollisionObject3D and (placement as CollisionObject3D).collision_layer & Common.SUN_OCCLUDER_LAYER:
+		return true
+	var occluder := placement.get_node_or_null("SunOccluder") as CollisionObject3D
+	return occluder != null and occluder.collision_layer & Common.SUN_OCCLUDER_LAYER != 0
