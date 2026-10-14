@@ -2770,6 +2770,10 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# Counter-rotated, so the model's WORLD yaw is _visual_yaw whatever the body
 	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
 	var yaw: float = wrapf(_visual_yaw - rotation.y, -PI, PI)
+	# The eye's offsets that follow the model turn with it -- see
+	# CameraRig._body_yaw.
+	if camera_rig != null:
+		camera_rig.set_body_yaw(yaw)
 	# Laid along the surface when a move asks for it (body_tilt_normal): a
 	# slide drawn upright on a slope leaves the legs in the air over the
 	# downhill side. The tilt is the rotation taking UP to the surface normal,

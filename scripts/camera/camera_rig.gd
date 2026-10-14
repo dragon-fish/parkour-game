@@ -174,15 +174,35 @@ var eye_forward: float = 0.0
 ## A dynamic addition to eye_forward, driven per tick by moves whose visual
 ## lean would otherwise sweep the body through the eye (the swing). Hard-set
 ## by the mover, zeroed on its exit.
+## Along the MODEL's facing, unlike eye_forward -- see _body_yaw.
 var extra_eye_forward: float = 0.0
 ## Its vertical twin -- see the swing's eye_lift_lean.
 var extra_eye_lift: float = 0.0
-## Its SIDEWAYS twin, positive to the body's right -- see the wall run's
+## Its SIDEWAYS twin, positive to the model's right -- see the wall run's
 ## eye_off_wall. Eased rather than hard-set, because unlike the swing's two
 ## there is no lean easing home behind it to ride: entering and leaving a wall
 ## run would step the eye a third of a metre in one frame.
 var extra_eye_lateral: float = 0.0
 var _extra_eye_lateral_target: float = 0.0
+## The visible model's yaw relative to the view, radians: BodyRoot's own yaw
+## in Player's space, pushed by Player every tick. Zero whenever the model
+## faces where the view looks.
+##
+## What the eye's MODEL-anchored offsets turn by: the wall run's sideways one
+## (extra_eye_lateral) and the swing's forward slide (extra_eye_forward). Each
+## follows something the model does -- a body the wall run's clip offset holds
+## outboard, a chest leaning over the bar -- so it has to point along the
+## model's frame, not the view's. Applied along the view instead, the sideways
+## one swung round with the mouse: looking a quarter turn off the wall run put
+## it along the wall, and the eye left the neck by most of a metre, behind the
+## shoulders with the neck's cut in view.
+##
+## eye_forward stays on the view, and DO NOT turn it with this too: the head
+## turns with the view (HeadLook), so a view-aligned forward offset is what
+## keeps the eye in front of the face as it turns. Together with the head
+## follow, which already carries the head round as the model's yaw parts from
+## the view's, the eye pivots about the head (tests/test_eye_pivot.gd).
+var _body_yaw: float = 0.0
 
 var _head_local_offset: Vector3 = Vector3.ZERO
 ## Per-move scaling of the head follow (wall run halves it -- see
@@ -543,7 +563,7 @@ func absorb_body_yaw(radians: float) -> void:
 ## a head is available.
 ## Sets where the head follow is headed, per move -- 1.0 everywhere except
 ## the states that ask for less. Eased in update_effects().
-## Slides the first-person eye sideways, positive to the body's right. Set
+## Slides the first-person eye sideways, positive to the model's right. Set
 ## every tick by whoever wants it and to zero by everyone else, exactly like
 ## set_head_follow_scale() beside it.
 func set_eye_lateral(target: float) -> void:
@@ -551,6 +571,10 @@ func set_eye_lateral(target: float) -> void:
 
 func set_head_follow_scale(target: float) -> void:
 	_head_follow_scale_target = clampf(target, 0.0, 1.0)
+
+## See _body_yaw.
+func set_body_yaw(radians: float) -> void:
+	_body_yaw = radians
 
 ## The body was lifted by `metres` in a way that is not a step -- the coil's
 ## capsule given back on the ground -- so the eye goes up with it this tick
@@ -768,6 +792,7 @@ func reset_state() -> void:
 	_turn_yaw = NAN
 	clear_shake()
 	_has_head = false
+	_body_yaw = 0.0
 	_has_look_constraint = false
 	_look_relative_yaw = 0.0
 	# The one place the scripted-turn lag IS cleared: a reset is a new life,
@@ -1083,11 +1108,17 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 	# first-person expression and at blend 1 it is exactly the old
 	# third-person zero, so neither end moved; the eye simply retreats to the
 	# head as the seat pulls back, instead of teleporting there.
-	base_position.z = -(eye_forward + extra_eye_forward) * (1.0 - _eased_view_blend())
-	# Faded out of third person for the same reason the forward offset is: it
-	# exists to put the FIRST-PERSON eye where the model's head already is, and
-	# the pulled-back seat is looking at that head from outside.
-	base_position.x = extra_eye_lateral * (1.0 - _eased_view_blend())
+	base_position.z = -eye_forward * (1.0 - _eased_view_blend())
+	# The swing's forward slide and the wall run's sideways one, both faded out
+	# of third person for the same reason the forward offset is: they exist to
+	# put the FIRST-PERSON eye where the model's head already is, and the
+	# pulled-back seat is looking at that head from outside. Both follow the
+	# MODEL -- a chest leaning over the bar, a body held out from the wall -- so
+	# both point along the model's frame, not the view's. See _body_yaw.
+	var model_offset: Vector3 = Basis(Vector3.UP, _body_yaw) \
+		* Vector3(extra_eye_lateral, 0.0, -extra_eye_forward) * (1.0 - _eased_view_blend())
+	base_position.x = model_offset.x
+	base_position.z += model_offset.z
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
