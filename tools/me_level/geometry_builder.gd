@@ -940,11 +940,10 @@ func _bsp_lightmapped(group: Dictionary) -> MeshInstance3D:
 	for i in group.order.size():
 		var entry: Dictionary = group.entries[group.order[i]]
 		mesh.surface_set_name(i, group.order[i])
-		var material: Material = library.lightmap_material(entry, textures) if library != null else null
+		var material: Material = lightmaps.placed(library.lightmap_material(entry, textures), group.lightmap) 				if library != null else null
 		if material == null and library != null:
 			material = library.override_material(entry)
 		mesh.surface_set_material(i, material)
-	lightmaps.set_parameters(instance, group.lightmap)
 	lightmaps.counts.texture += 1
 	return instance
 
