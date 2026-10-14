@@ -40,6 +40,12 @@ static func from_manifest(data: Dictionary) -> Resource:
 
 ## This toward `target` by `fade`, every value -- the curves and the five
 ## exposure values included, as the original's LocalPlayer blends them.
+##
+## DO NOT write the curves in place (`curve_m[i] = ...`). Resource.duplicate()
+## hands the copy the SAME packed arrays as the original, so the blended copy
+## and the world settings it was duplicated from share their curves: blending
+## into the tutorial's corridor wrote the volume's identity curves into the
+## world's, and the street stayed ungraded, without its blue, ever after.
 func blend_toward(target: Resource, fade: float) -> void:
 	shadows = shadows.lerp(target.shadows, fade)
 	highlights = highlights.lerp(target.highlights, fade)
@@ -47,9 +53,15 @@ func blend_toward(target: Resource, fade: float) -> void:
 	for key in ["desaturation", "exposure_manual", "exposure_speed_up", "exposure_speed_down",
 			"exposure_high", "exposure_low"]:
 		set(key, lerpf(get(key), target.get(key), fade))
-	for i in mini(curve_m.size(), target.curve_m.size()):
-		curve_m[i] = curve_m[i].lerp(target.curve_m[i], fade)
-		curve_b[i] = curve_b[i].lerp(target.curve_b[i], fade)
+	curve_m = _lerp_curve(curve_m, target.curve_m, fade)
+	curve_b = _lerp_curve(curve_b, target.curve_b, fade)
+
+
+static func _lerp_curve(from: PackedVector3Array, to: PackedVector3Array, fade: float) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for i in mini(from.size(), to.size()):
+		out.append(from[i].lerp(to[i], fade))
+	return out
 
 
 ## The values onto the tone mapping effect.
