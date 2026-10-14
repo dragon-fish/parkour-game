@@ -36,12 +36,18 @@ extends Node3D
 #     screen-edge fade drew an oval of city on every large facade) and no sky
 #     fallback (clouds on floors indoors).
 #
-# A LIGHTMAPPED level (every one the extractor now writes) draws its static
-# world with the original's own bake (me_lightmap.gdshaderinc) and grades it
-# with the original's tone mapping (me_tone_map.gd): the sun and the lamps
-# light only what moves, there is no SDFGI, and the fixed exposure and the
-# ControlPoint curves below are the older path's, kept for a geometry scene
-# built before the bake was read.
+# A LIGHTMAPPED level (every one the extractor now writes) is graded with the
+# original's tone mapping and eye adaptation (me_tone_map.gd), and lit as the
+# lighting setting says (SettingsStore.LIGHTING_MODES):
+#   - classic: the static world is drawn with the original's own bake
+#     (me_lightmap.gdshaderinc); the sun and the lamps light only what moves,
+#     there is no SDFGI, and the shadow light (me_shadow_light.gd) casts the
+#     player's shadow onto the bake;
+#   - modern: the static world takes its plain materials (me_lightmapped.gd)
+#     under the live sun, lamps and SDFGI, as a level without a bake is lit,
+#     but in the bake's own units and exposed by the same eye adaptation.
+# The fixed exposure and the ControlPoint curves below are the older path's,
+# kept for a geometry scene built before the bake was read.
 #
 # The data fields below come from the manifest (environment.py). The dials
 # are judged against the owner's screenshots of the original
@@ -166,7 +172,13 @@ const NOMINAL_SUN_BRIGHTNESS := 2.0
 @export var volumetric_density := 0.0
 @export var volumetric_distance_m := 64.0
 
+## The lighting the level is drawn with now (SettingsStore.LIGHTING_MODES).
+## Only a lightmapped level has more than one.
+var lighting := "classic"
+
 var _dome: MeshInstance3D
+var _env: Environment
+var _sun: DirectionalLight3D
 var _tone_effect: CompositorEffect
 var _tone_now: Resource
 var _tone_target: Resource
@@ -184,6 +196,7 @@ func _ready() -> void:
 	var world := arena.get_node_or_null("WorldEnvironment") as WorldEnvironment
 	if world != null and world.environment != null:
 		var env: Environment = world.environment.duplicate()
+		_env = env
 		_apply_sky(env)
 		_apply_light(env)
 		if lightmapped and tone != null:
@@ -196,6 +209,15 @@ func _ready() -> void:
 	_apply_haze(arena)
 	_apply_sun(arena)
 	_add_dome()
+	if lightmapped:
+		SettingsStore.follow_lighting(self)
+
+
+func use_lighting(mode: String) -> void:
+	lighting = mode
+	if _env != null:
+		_apply_light(_env)
+	_apply_sun_layers()
 
 
 ## The dome rides with the camera: what it shows depends on direction only.
@@ -276,8 +298,13 @@ func _add_dome() -> void:
 	add_child(_dome)
 
 
+## Whether the static world is drawn from its bake right now.
+func baked() -> bool:
+	return lightmapped and lighting == "classic"
+
+
 func _apply_light(env: Environment) -> void:
-	if lightmapped:
+	if baked():
 		# The bake is the world's light, and its occlusion: nothing static takes
 		# live light, so neither GI nor SSAO has anything left to do.
 		env.sdfgi_enabled = false
@@ -436,10 +463,19 @@ func _apply_sun(arena: Arena) -> void:
 	sun.directional_shadow_split_2 = 0.15
 	sun.directional_shadow_split_3 = 0.4
 	sun.directional_shadow_fade_start = 0.9
-	if lightmapped:
+	_sun = sun
+	_apply_sun_layers()
+
+
+func _apply_sun_layers() -> void:
+	if _sun == null:
+		return
+	if baked():
 		# What moves only: the baked world has this sun in its bake already,
 		# and its shadow light (me_shadow_light.gd) is the only light it takes.
-		sun.light_cull_mask &= ~Common.BAKED_LAYER
+		_sun.light_cull_mask &= ~Common.BAKED_LAYER
+	else:
+		_sun.light_cull_mask |= Common.BAKED_LAYER
 
 
 func _sun_color() -> Color:

@@ -30,12 +30,26 @@ extends Node3D
 # curtain.
 
 const LIGHTS_PER_FRAME := 32
+const Common := preload("res://tools/me_level/me_level_common.gd")
 # On a light whose package is not in the level: it stays dark whoever asks.
 const ABSENT_META := &"me_absent"
 
 @export var energy_scale: float = 17.0:
 	set(value):
 		energy_scale = value
+		_apply()
+## Godot energy per unit of BakerBrightness under modern lighting
+## (SettingsStore.LIGHTING_MODES), where the frame is in the bake's units and
+## exposed by the original's eye adaptation, as the sun's energy is its
+## BakerBrightness. Measured against the bake's irradiance in the tutorial's
+## lamp-lit corridor and storeroom (white albedo, lamps alone): at 1, with
+## Godot's own falloff, the lamps light them 1.06 and 0.78 times as the bake
+## does; at energy_scale's 35 they were 25 times over, which no exposure the
+## original's limits allow could bring down. With omni_attenuation 0 (UE3's
+## falloff has no inverse distance) they were 2 to 4 times over. A dial.
+@export var modern_energy_scale: float = 1.0:
+	set(value):
+		modern_energy_scale = value
 		_apply()
 
 ## Shared by every lights node: the budget is per frame, not per node, or a
@@ -44,11 +58,14 @@ static var _budget_frame := -1
 static var _budget_left := 0
 
 var _dark: Array[Light3D] = []
+## The lighting the level is drawn with (SettingsStore.LIGHTING_MODES).
+var _lighting := "classic"
 
 func _ready() -> void:
 	_apply()
 	if Engine.is_editor_hint():
 		return
+	SettingsStore.follow_lighting(self)
 	for light in get_children():
 		if light is Light3D and light.visible:
 			light.visible = false
@@ -87,9 +104,23 @@ func set_present(light: Light3D, on: bool) -> void:
 		set_process(true)
 
 
+## Classic: the baked world takes no lamp, its light is in the bake. Modern:
+## every lamp but one that lights only what moves lights the world too.
+func use_lighting(mode: String) -> void:
+	_lighting = mode
+	for light in get_children():
+		if light is Light3D and not light.get_meta(Common.CHARACTER_ONLY_META, false):
+			if mode == "modern":
+				light.light_cull_mask |= Common.BAKED_LAYER
+			else:
+				light.light_cull_mask &= ~Common.BAKED_LAYER
+	_apply()
+
+
 func _apply() -> void:
 	if not is_inside_tree():
 		return
 	for light in get_children():
 		if light is Light3D and light.has_meta("me_brightness"):
-			light.light_energy = float(light.get_meta("me_brightness")) * energy_scale
+			var scale := modern_energy_scale if _lighting == "modern" else energy_scale
+			light.light_energy = float(light.get_meta("me_brightness")) * scale

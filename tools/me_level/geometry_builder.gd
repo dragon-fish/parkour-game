@@ -148,10 +148,15 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_apply_overrides(instance, placement)
 		var baked := false
+		var plain: Array = []
 		if lightmaps != null and placement.has("lightmap") and not cloth:
+			for surface in instance.get_surface_override_material_count():
+				plain.append(instance.get_surface_override_material(surface))
 			baked = lightmaps.apply(instance, placement)
 		if baked:
 			instance.layers = Common.BAKED_LAYER
+			if plain.any(func(m: Material) -> bool: return m != null):
+				instance.set_meta(Common.MODERN_MATERIALS_META, plain)
 		if cloth:
 			_cloth_draws_both_sides(instance as SoftBody3D)
 		var rest: MeshInstance3D = _cloth_rest(mesh) if cloth else null
@@ -1020,14 +1025,7 @@ func _build_bsp(faces: Array) -> StaticBody3D:
 			var material: Material = null
 			if library != null:
 				material = library.override_material(entries[order[i]])
-			if material == null:
-				# DefaultMaterial and anything whose bake failed: the family
-				# colour, as the whole BSP used to be drawn.
-				var flat := StandardMaterial3D.new()
-				flat.albedo_color = Common.MATERIAL_PALETTE[BSP_MATERIAL_FAMILY]
-				flat.roughness = 0.95
-				material = flat
-			mesh.surface_set_material(i, material)
+			mesh.surface_set_material(i, material if material != null else _bsp_flat_material())
 			mesh.surface_set_name(i, order[i])
 		var instance := MeshInstance3D.new()
 		instance.name = "Mesh"
@@ -1045,6 +1043,15 @@ func _build_bsp(faces: Array) -> StaticBody3D:
 	return body
 
 
+## DefaultMaterial and anything whose bake failed: the family colour, as the
+## whole BSP used to be drawn.
+static func _bsp_flat_material() -> StandardMaterial3D:
+	var flat := StandardMaterial3D.new()
+	flat.albedo_color = Common.MATERIAL_PALETTE[BSP_MATERIAL_FAMILY]
+	flat.roughness = 0.95
+	return flat
+
+
 ## One element of the BSP drawn with its lightmap. Tangents from the faces'
 ## own texture coordinates: the BSP carries none, and only the lightmap's
 ## specular term reads them.
@@ -1060,13 +1067,17 @@ func _bsp_lightmapped(group: Dictionary) -> MeshInstance3D:
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
 	instance.layers = Common.BAKED_LAYER
+	# What modern lighting draws instead: the element's plain materials, as the
+	# BSP that has no lightmap is drawn.
+	var plain: Array = []
 	for i in group.order.size():
 		var entry: Dictionary = group.entries[group.order[i]]
 		mesh.surface_set_name(i, group.order[i])
+		var own: Material = library.override_material(entry) if library != null else null
+		plain.append(own if own != null else _bsp_flat_material())
 		var material: Material = library.lightmap_material(entry, textures) if library != null else null
-		if material == null and library != null:
-			material = library.override_material(entry)
-		mesh.surface_set_material(i, material)
+		mesh.surface_set_material(i, material if material != null else plain[i])
+	instance.set_meta(Common.MODERN_MATERIALS_META, plain)
 	lightmaps.set_parameters(instance, group.lightmap)
 	lightmaps.counts.texture += 1
 	return instance
@@ -1119,8 +1130,11 @@ func _build_lights(lights: Array) -> Node3D:
 			# walked up and the fine cascades took over.
 			light.light_bake_mode = Light3D.BAKE_DISABLED
 		if lightmaps != null:
-			# The baked world takes no lamp: its light is in the bake.
+			# The baked world takes no lamp: its light is in the bake. Modern
+			# lighting gives a world lamp the layer back (me_lights.gd).
 			light.light_cull_mask &= ~Common.BAKED_LAYER
+		if entry.get("character_only", false):
+			light.set_meta(Common.CHARACTER_ONLY_META, true)
 		light.set_meta("me_brightness", float(entry["brightness"]))
 		light.set_meta(Common.PACKAGE_META, Common.package_key(str(entry["package"])))
 		light.set_meta(Common.ACTOR_META, Common.actor_id(str(entry["package"]), str(entry["name"])))

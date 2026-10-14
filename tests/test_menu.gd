@@ -499,7 +499,7 @@ func test_the_settings_page_still_builds_every_row() -> void:
 		if key in MeSettingsMenu._ACTION_KEYS:
 			assert_false(in_slider, "action row %s was ALSO built as a slider" % key)
 			assert_false(in_stepper, "action row %s was ALSO built as a stepper" % key)
-		elif key in ["window_mode", "window_size", "antialiasing"] or key in MeSettingsMenu._SWITCH_KEYS:
+		elif key in ["window_mode", "window_size", "antialiasing", "lighting"] or key in MeSettingsMenu._SWITCH_KEYS:
 			assert_true(in_stepper, "stepper row %s was not built as a stepper" % key)
 			assert_false(in_slider, "stepper row %s was ALSO built as a slider" % key)
 		else:

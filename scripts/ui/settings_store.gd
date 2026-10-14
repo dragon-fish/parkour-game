@@ -45,6 +45,15 @@ const PHYSICS_PROPS_GROUP := "physics_props"
 ## a section streams in long after the settings were.
 static var physics_props_on := true
 
+## How an extracted Mirror's Edge level is lit (me_environment.gd): "classic",
+## the original's own baked lightmaps, or "modern", live sun and lamps with
+## SDFGI. Levels of our own have nothing this switches.
+const LIGHTING_MODES := ["classic", "modern"]
+## What follows the lighting setting; each joins it itself: see follow_lighting().
+const LIGHTING_GROUP := "me_lighting"
+## lighting as last applied, for a level or section loaded afterwards.
+static var lighting_mode := "classic"
+
 
 ## The full settings blob with every key at its shipped default.
 static func defaults() -> Dictionary:
@@ -75,6 +84,8 @@ static func defaults() -> Dictionary:
 		# 5: the owner plays at 2, and his screenshots are the reference.
 		brightness = 2,
 		contrast = 5,
+		# Classic: the original's look, and the cheaper of the two.
+		lighting = "classic",
 		# action -> its two bindings. See InputBindings for the shape; the
 		# defaults are the keys this project read before bindings existed.
 		bindings = InputBindings.defaults(),
@@ -136,6 +147,8 @@ static func apply_global(s: Dictionary) -> void:
 	physics_props_on = s.physics_props
 	InputBindings.use(s.bindings)
 	(Engine.get_main_loop() as SceneTree).call_group(PHYSICS_PROPS_GROUP, "simulate", physics_props_on)
+	lighting_mode = s.lighting if s.lighting in LIGHTING_MODES else LIGHTING_MODES[0]
+	(Engine.get_main_loop() as SceneTree).call_group(LIGHTING_GROUP, "use_lighting", lighting_mode)
 
 	# Headless has no window; the editor-embedded game has one it is not
 	# allowed to touch ("Embedded window can't be resized"). Same guard as
@@ -185,6 +198,13 @@ static func apply_global(s: Dictionary) -> void:
 static func follow_physics_props(prop: Node) -> void:
 	prop.add_to_group(PHYSICS_PROPS_GROUP)
 	prop.call("simulate", physics_props_on)
+
+
+## Puts a part of an extracted level under the lighting setting, as it stands
+## now and whenever it changes. The node answers use_lighting(mode: String).
+static func follow_lighting(node: Node) -> void:
+	node.add_to_group(LIGHTING_GROUP)
+	node.call("use_lighting", lighting_mode)
 
 
 ## Applies the per-player half of the settings: camera sensitivity and FOV

@@ -92,6 +92,14 @@ const MATINEE_META := &"me_matinee"
 const BAKED_LAYER := 1 << 10
 const CHARACTER_SHADOW_LAYER := 1 << 11
 
+## On a baked instance, what modern lighting draws it with
+## (SettingsStore.LIGHTING_MODES; me_lightmapped.gd): per surface, the override
+## material, null for the mesh's own. The mesh's own are the plain, live-lit
+## materials. Absent: every surface its mesh's own.
+const MODERN_MATERIALS_META := &"me_modern_materials"
+## On a lamp that lights only what moves, whichever the lighting.
+const CHARACTER_ONLY_META := &"me_character_only"
+
 ## PHYSICS layer of what keeps the sun off a character: the only layer the
 ## shadow light's sun trace (me_shadow_light.gd) reads, and nothing masks it.
 ## [ME:CONFIRMED MirrorsEdge.exe 0xff11e0, 0xdbaef0] the original's light

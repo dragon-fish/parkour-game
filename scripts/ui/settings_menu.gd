@@ -45,6 +45,9 @@ const ANTIALIASING_LABELS := {
 	"off": "关闭", "fxaa": "FXAA", "msaa_2x": "MSAA 2×", "msaa_4x": "MSAA 4×",
 }
 
+## lighting row's labels, in SettingsStore.LIGHTING_MODES order.
+const LIGHTING_LABELS := {"classic": "经典 ME 光照", "modern": "现代光照"}
+
 ## Stepper rows that are an on/off switch.
 const _SWITCH_KEYS := ["small_third_person_body", "physics_props"]
 
@@ -63,6 +66,7 @@ const _ROWS := [
 	{"key": "volume", "label": "总音量", "desc": "调整主音量大小。"},
 	{"key": "small_third_person_body", "label": "第三人称小体型", "desc": "第三人称下把角色模型缩小到 85%，人物与场景的比例会更舒服。只影响观感，不改变碰撞与动作，因此部分手部动作可能碰不到或穿过物体。"},
 	{"key": "physics_props", "label": "物理模拟", "desc": "布料会随风飘动、被人推开，纸箱可以撞开。关闭后布料停在原本的形状，纸箱不再移动，能提高帧数。"},
+	{"key": "lighting", "label": "光照", "desc": "只对镜之边缘的关卡生效。经典 ME 光照使用原版烘焙的光照贴图，还原原作的画面，开销也小。现代光照改用实时的太阳与灯光，加上全局光照，一切物体都投下实时阴影，但更吃性能。"},
 	{"key": "replay_tutorial", "label": "新手教程", "desc": "回到开场画面重玩一次新手教程。这不会清除任何已保存的进度。"},
 ]
 
@@ -215,7 +219,7 @@ func _build_ui() -> void:
 
 		if key in _ACTION_KEYS:
 			_build_action(line, key, desc)
-		elif key in ["window_mode", "window_size", "antialiasing"] or key in _SWITCH_KEYS:
+		elif key in ["window_mode", "window_size", "antialiasing", "lighting"] or key in _SWITCH_KEYS:
 			_build_stepper(line, key, desc)
 		else:
 			_build_slider(line, key, desc)
@@ -647,6 +651,10 @@ func _on_stepper_step(key: String, delta: int) -> void:
 		if index < 0:
 			index = 0
 		_working.antialiasing = ANTIALIASING[wrapi(index + delta, 0, ANTIALIASING.size())]
+	elif key == "lighting":
+		var modes := SettingsStore.LIGHTING_MODES
+		var index := maxi(modes.find(_working.lighting), 0)
+		_working.lighting = modes[wrapi(index + delta, 0, modes.size())]
 	elif key in _SWITCH_KEYS:
 		_working[key] = not bool(_working[key])
 	_refresh_controls()
@@ -824,6 +832,7 @@ func _refresh_controls() -> void:
 	for key in _SWITCH_KEYS:
 		_stepper_value_labels[key].text = "开启" if bool(_working[key]) else "关闭"
 	_stepper_value_labels["antialiasing"].text = 			ANTIALIASING_LABELS.get(_working.antialiasing, _working.antialiasing)
+	_stepper_value_labels["lighting"].text = LIGHTING_LABELS.get(_working.lighting, _working.lighting)
 
 	for key in ["sensitivity", "fov", "volume"]:
 		(_sliders[key] as HSlider).set_value_no_signal(_working[key])

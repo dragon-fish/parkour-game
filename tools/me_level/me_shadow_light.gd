@@ -39,6 +39,10 @@ extends DirectionalLight3D
 # TdGame.u] the original's third-person mesh has bOwnerNoSeeWithShadow:
 # unseen, still casting; HeadlessVariant's shadow stand-ins do the same here).
 #
+# CLASSIC LIGHTING ONLY. Under modern lighting (SettingsStore.LIGHTING_MODES)
+# the live sun lights the world and casts the player's shadow itself; this one
+# stays dark.
+#
 # RUNTIME ONLY beyond the built pose: in the editor it points along the sun
 # and darkens nothing, nothing it lights being able to cast into it until a
 # body is in the scene.
@@ -82,6 +86,7 @@ const TRACE_M := 1000.0
 var _current := []
 var _target := []
 var _next_update := 0.0
+var _modern := false
 
 
 func _ready() -> void:
@@ -89,6 +94,14 @@ func _ready() -> void:
 		return
 	_current = _empty_sh()
 	_target = _empty_sh()
+	SettingsStore.follow_lighting(self)
+
+
+func use_lighting(mode: String) -> void:
+	_modern = mode == "modern"
+	if _modern:
+		visible = false
+		RenderingServer.global_shader_parameter_set(SPHERE_GLOBAL, Vector4.ZERO)
 
 
 func _exit_tree() -> void:
@@ -97,7 +110,7 @@ func _exit_tree() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if Engine.is_editor_hint():
+	if Engine.is_editor_hint() or _modern:
 		return
 	var player := _player()
 	if player == null:
