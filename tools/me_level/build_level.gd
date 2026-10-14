@@ -70,6 +70,8 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	# by every chapter, the baked light is not.
 	_lightmaps = MeLightmaps.new(dir.path_join("lightmaps"),
 			Common.LEVEL_DIR.path_join(str(config["id"]) + "_lightmaps"), _library)
+	if not _lightmaps.prepare_vertex_samples(manifest["placements"]):
+		return false
 	# Optional: an extract made before emitters were read has none.
 	var particles_path := dir.path_join("particles.json")
 	_particles = MeParticles.new(Common.read_json(particles_path) if FileAccess.file_exists(particles_path) else {})

@@ -13,7 +13,7 @@ extends Node3D
 # because the build's values are the right ones; it is the load that loses them.
 
 const PARAMETERS: Array[StringName] = [&"lightmap_uv_scale_bias", &"lightmap_scale_0",
-		&"lightmap_scale_1", &"lightmap_scale_2"]
+		&"lightmap_scale_1", &"lightmap_scale_2", &"lightmap_vertex_offset"]
 
 
 func _ready() -> void:

@@ -27,7 +27,7 @@ const SPECULAR_SCALE := 0.5
 const SHEEN_SCALE := 0.5
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 10
+const LIBRARY_FORMAT := 12
 ## What a lightmapped surface draws with, by the original's blend mode. A blend
 ## that is not here (additive, modulate) is not lit by its lightmap.
 const LIGHTMAP_SHADERS := {
@@ -149,10 +149,6 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 	# lightmapped placement its lightmapped materials: {material, blend, unlit,
 	# nondirectional}.
 	var drawn: Array[Dictionary] = []
-	# For a surface built flat (no normals in the original), the original
-	# vertex each of its vertices came from: a vertex lightmap is per original
-	# vertex. Empty for every other surface.
-	var sources: Array[PackedInt32Array] = []
 	for element in record["surfaces"].size():
 		var surface: Dictionary = record["surfaces"][element]
 		var indices := _indices(surface["indices"])
@@ -183,7 +179,6 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		_add_surface(mesh, positions, normals, uvs, uv2, tangents, indices, material, material_name)
 		slots.append(surface["slot"])
 		drawn.append(described)
-		sources.append(indices if normals.is_empty() else PackedInt32Array())
 		if surface.get("two_sided", false) and surface["blend"] != "additive":
 			# DO NOT draw two-sided surfaces with CULL_DISABLED. A placement with a
 			# mirroring transform (negative scale) gets FRONT_FACING inverted,
@@ -200,7 +195,6 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			_add_surface(mesh, positions, back_normals, uvs, uv2, tangents, back_indices, material, material_name + "_back")
 			slots.append(surface["slot"])
 			drawn.append(described)
-			sources.append(back_indices if normals.is_empty() else PackedInt32Array())
 	var simple: Array[Shape3D] = []
 	for shape: Dictionary in record["simple_shapes"]:
 		var convex := ConvexPolygonShape3D.new()
@@ -211,7 +205,6 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		simple.append(convex)
 	mesh.set_meta("surface_slots", slots)
 	mesh.set_meta("surface_materials", drawn)
-	mesh.set_meta("flat_sources", sources)
 	mesh.set_meta("simple_shapes", simple)
 	# Whether a pawn's box takes the hulls rather than the triangles: with it
 	# set and no hulls, the mesh blocks nothing (see the extractor's
@@ -240,13 +233,18 @@ func _add_surface(mesh: ArrayMesh, positions: PackedVector3Array, normals: Packe
 		uvs: PackedVector2Array, uv2: PackedVector2Array, tangents: PackedFloat32Array,
 		indices: PackedInt32Array, material: Material, surface_name: String) -> void:
 	var arrays := []
+	var format := 0
 	if normals.is_empty():
 		# The original cooked this mesh without normals: shade it flat. One
-		# vertex per corner, in index order (the mesh's flat_sources).
+		# vertex per corner, so VERTEX_ID is no longer the original's vertex:
+		# CUSTOM0.r carries it, plus one, for a vertex lightmap's samples
+		# (me_lightmap.gdshaderinc).
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		st.set_smooth_group(-1)
+		st.set_custom_format(0, SurfaceTool.CUSTOM_R_FLOAT)
 		for index in indices:
+			st.set_custom(0, Color(index + 1, 0.0, 0.0, 0.0))
 			if not uvs.is_empty():
 				st.set_uv(uvs[index])
 			if not uv2.is_empty():
@@ -254,6 +252,7 @@ func _add_surface(mesh: ArrayMesh, positions: PackedVector3Array, normals: Packe
 			st.add_vertex(positions[index])
 		st.generate_normals()
 		arrays = st.commit_to_arrays()
+		format = Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 	else:
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = positions
@@ -265,7 +264,7 @@ func _add_surface(mesh: ArrayMesh, positions: PackedVector3Array, normals: Packe
 			arrays[Mesh.ARRAY_TEX_UV2] = uv2
 		if not tangents.is_empty():
 			arrays[Mesh.ARRAY_TANGENT] = tangents
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, format)
 	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
 	mesh.surface_set_name(mesh.get_surface_count() - 1, surface_name)
 
@@ -505,18 +504,18 @@ func _texture_file(material_name: String, kind: String, png: String, source: Ima
 ## The material a surface lit by its lightmap draws with, or null for one the
 ## lightmap does not light: an unlit surface shows its own colour, and an
 ## additive or modulate one is not drawn. `atlas` is a texture lightmap's
-## three coefficient textures, or empty for a vertex lightmap, whose samples
-## ride on the placement's own copy of the mesh.
+## three coefficient textures, or for a `vertex` lightmap the chapter's
+## samples texture.
 ##
 ## No TEXTURE_ALBEDO and no baker_tint: both stand in for what the lightmap
 ## carries itself -- the brightness the bake gave the surface and the colour
 ## Beast was told it has.
-func lightmap_material(entry: Dictionary, atlas: Array) -> ShaderMaterial:
+func lightmap_material(entry: Dictionary, atlas: Array, vertex := false) -> ShaderMaterial:
 	var blend: String = entry.get("blend", "opaque")
 	if entry.get("unlit", false) or not LIGHTMAP_SHADERS.has(blend):
 		return null
 	var material_name: String = entry["material"] if entry.get("material") != null else ""
-	var key := "%s|%s|%s|%s" % [material_name, blend, entry.get("nondirectional", false),
+	var key := "%s|%s|%s|%s|%s" % [material_name, blend, entry.get("nondirectional", false), vertex,
 			",".join(atlas.map(func(t: Texture2D) -> String: return t.resource_path))]
 	if _lightmapped.has(key):
 		return _lightmapped[key]
@@ -549,8 +548,9 @@ func lightmap_material(entry: Dictionary, atlas: Array) -> ShaderMaterial:
 		var color: Color = Common.MATERIAL_PALETTE[Common.material_family(material_name, "")].srgb_to_linear()
 		material.set_shader_parameter("albedo_color", Vector3(color.r, color.g, color.b))
 	material.set_shader_parameter("nondirectional", entry.get("nondirectional", false))
-	if atlas.is_empty():
+	if vertex:
 		material.set_shader_parameter("vertex_lightmap", true)
+		material.set_shader_parameter("vertex_samples", atlas[0])
 	else:
 		for k in atlas.size():
 			material.set_shader_parameter("lightmap_%d" % k, atlas[k])

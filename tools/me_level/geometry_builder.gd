@@ -142,7 +142,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_apply_overrides(instance, placement)
 		if lightmaps != null and placement.has("lightmap") and not cloth:
-			lightmaps.apply(instance, placement["lightmap"], placement.get("materials", []))
+			lightmaps.apply(instance, placement)
 		if cloth:
 			_cloth_draws_both_sides(instance as SoftBody3D)
 		var rest: MeshInstance3D = _cloth_rest(mesh) if cloth else null

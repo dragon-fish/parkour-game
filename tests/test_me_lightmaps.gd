@@ -13,20 +13,6 @@ const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const TUTORIAL_GEOMETRY := "res://scenes/local_debug_levels/mirrors_edge/sp00_tutorial_geometry.scn"
 
 
-func _triangle(flat := false) -> ArrayMesh:
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3.UP])
-	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 2, 1])
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh.set_meta("surface_slots", PackedInt32Array([0]))
-	mesh.set_meta("surface_materials", [{material = "M_Test", blend = "opaque", unlit = false}])
-	# A flat surface's vertices are the original's in index order.
-	mesh.set_meta("flat_sources", [PackedInt32Array([2, 0, 1]) if flat else PackedInt32Array()])
-	return mesh
-
-
 ## Three vertices, three coefficients each, R G B: vertex v coefficient k is
 ## (10v + k, 100 + k, 200 + v).
 func _samples() -> PackedByteArray:
@@ -37,22 +23,37 @@ func _samples() -> PackedByteArray:
 	return out
 
 
-func test_a_vertex_lightmap_rides_on_the_mesh_one_coefficient_a_channel() -> void:
-	var copy := MeLightmaps.with_samples(_triangle(), _samples())
-	var arrays := copy.surface_get_arrays(0)
-	for k in 3:
-		var channel: PackedByteArray = arrays[Mesh.ARRAY_CUSTOM0 + k]
-		assert_eq(channel.size(), 12, "CUSTOM%d holds four bytes a vertex" % k)
-		for v in 3:
-			assert_eq(channel[v * 4], 10 * v + k, "vertex %d coefficient %d red" % [v, k])
-			assert_eq(channel[v * 4 + 2], 200 + v, "vertex %d coefficient %d blue" % [v, k])
-	assert_eq(copy.get_meta("surface_slots"), PackedInt32Array([0]), "the copy lost what overrides index by")
+func test_vertex_samples_are_three_texels_a_vertex_in_order() -> void:
+	var image := MeLightmaps.samples_image(_samples())
+	assert_eq(image.get_width(), MeLightmaps.SAMPLES_WIDTH)
+	for v in 3:
+		for k in 3:
+			var texel := image.get_pixel(v * MeLightmaps.TEXELS_PER_VERTEX + k, 0)
+			assert_eq(roundi(texel.r * 255.0), 10 * v + k, "vertex %d coefficient %d red" % [v, k])
+			assert_eq(roundi(texel.b * 255.0), 200 + v, "vertex %d coefficient %d blue" % [v, k])
 
 
-func test_a_flat_surface_takes_each_vertex_from_the_original_it_came_from() -> void:
-	var copy := MeLightmaps.with_samples(_triangle(true), _samples())
-	var red: PackedByteArray = copy.surface_get_arrays(0)[Mesh.ARRAY_CUSTOM0]
-	assert_eq([red[0], red[4], red[8]], [20, 0, 10], "flat vertices read the wrong original vertex")
+func test_each_placement_starts_its_own_run_of_samples() -> void:
+	var lightmaps := MeLightmaps.new("user://none", "user://test_me_lightmaps", MeLibrary.new())
+	var samples := Marshalls.raw_to_base64(_samples())
+	assert_true(lightmaps.prepare_vertex_samples([
+		{package = "A.me1", name = "One", lightmap = {kind = "vertex", samples = samples}},
+		{package = "A.me1", name = "Lit", lightmap = {kind = "texture"}},
+		{package = "A.me1", name = "Two", lightmap = {kind = "vertex", samples = samples}}]))
+	assert_eq(lightmaps._sample_offsets["a.One"], 0)
+	assert_eq(lightmaps._sample_offsets["a.Two"], 3, "the second run starts after the first's three vertices")
+
+
+func test_a_flat_surface_records_which_original_vertex_each_corner_is() -> void:
+	var library := MeLibrary.new()
+	var vertices := PackedFloat32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).to_byte_array()
+	var record := {name = "Flat", vertex_count = 3, vertices = Marshalls.raw_to_base64(vertices), normals = null,
+			uvs = [], bounds = {origin = [0, 0, 0], extent = [1, 1, 1]}, simple_shapes = [],
+			surfaces = [{material = null, blend = "opaque", unlit = false, collide = false, slot = 0,
+					indices = Marshalls.raw_to_base64(PackedByteArray([2, 0, 0, 0, 1, 0]))}]}
+	var mesh: ArrayMesh = library._build_mesh(record)
+	var custom: PackedFloat32Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_CUSTOM0]
+	assert_eq([custom[0], custom[1], custom[2]], [3.0, 1.0, 2.0], "the corners are vertices 2, 0, 1, each plus one")
 
 
 func test_a_lit_surface_gets_the_lightmap_shader_and_an_unlit_one_keeps_its_own() -> void:
@@ -63,8 +64,9 @@ func test_a_lit_surface_gets_the_lightmap_shader_and_an_unlit_one_keeps_its_own(
 	assert_eq(lit.shader, MeLibrary.LIGHTMAP_SHADERS["masked"])
 	assert_eq(lit.get_shader_parameter("lightmap_2"), atlas[2])
 	assert_ne(lit.get_shader_parameter("vertex_lightmap"), true, "a texture lightmap read as a vertex one")
-	var vertex: ShaderMaterial = library.lightmap_material({material = "M_None", blend = "opaque"}, [])
+	var vertex: ShaderMaterial = library.lightmap_material({material = "M_None", blend = "opaque"}, [atlas[0]], true)
 	assert_true(vertex.get_shader_parameter("vertex_lightmap"))
+	assert_eq(vertex.get_shader_parameter("vertex_samples"), atlas[0])
 	assert_null(library.lightmap_material({material = "M_Sign", blend = "opaque", unlit = true}, atlas),
 			"an unlit surface shows its own colour, not the bake")
 	assert_null(library.lightmap_material({material = "M_Shaft", blend = "additive"}, atlas),

@@ -40,6 +40,10 @@ uniform bool vertex_lightmap = false;
 uniform sampler2D lightmap_0 : source_color, filter_linear_mipmap, repeat_disable;
 uniform sampler2D lightmap_1 : source_color, filter_linear_mipmap, repeat_disable;
 uniform sampler2D lightmap_2 : source_color, filter_linear_mipmap, repeat_disable;
+// A vertex lightmap's samples, the chapter's (me_lightmaps.gd): three texels a
+// vertex, the FColor bytes as stored, decoded here as the original's vertex
+// shader decodes them.
+uniform sampler2D vertex_samples : filter_nearest, repeat_disable;
 
 // Per placement: where it lies in its atlas, and each coefficient's scale.
 // Instance uniforms, so placements share their materials and Godot can draw
@@ -51,6 +55,8 @@ instance uniform vec4 lightmap_uv_scale_bias = vec4(1.0, 1.0, 0.0, 0.0);
 instance uniform vec3 lightmap_scale_0 = vec3(1.0);
 instance uniform vec3 lightmap_scale_1 = vec3(1.0);
 instance uniform vec3 lightmap_scale_2 = vec3(1.0);
+// Where the placement's run of vertex samples starts, in vertices.
+instance uniform int lightmap_vertex_offset = 0;
 
 varying vec3 vertex_light_0;
 varying vec3 vertex_light_1;
@@ -64,10 +70,15 @@ const mat3 LIGHTMAP_BASIS = mat3(
 
 void vertex() {
 	if (vertex_lightmap) {
+		// The original vertex this one is: VERTEX_ID, except on a surface the
+		// library built flat, which records it in CUSTOM0.r, plus one.
+		int source = CUSTOM0.r > 0.5 ? int(CUSTOM0.r + 0.5) - 1 : VERTEX_ID;
+		int at = (lightmap_vertex_offset + source) * 3;
+		int width = textureSize(vertex_samples, 0).x;
 		// Per vertex, as the original's vertex shader does it, then interpolated.
-		vertex_light_0 = pow(CUSTOM0.rgb, vec3(2.2)) * lightmap_scale_0;
-		vertex_light_1 = pow(CUSTOM1.rgb, vec3(2.2)) * lightmap_scale_1;
-		vertex_light_2 = pow(CUSTOM2.rgb, vec3(2.2)) * lightmap_scale_2;
+		vertex_light_0 = pow(texelFetch(vertex_samples, ivec2(at % width, at / width), 0).rgb, vec3(2.2)) * lightmap_scale_0;
+		vertex_light_1 = pow(texelFetch(vertex_samples, ivec2((at + 1) % width, (at + 1) / width), 0).rgb, vec3(2.2)) * lightmap_scale_1;
+		vertex_light_2 = pow(texelFetch(vertex_samples, ivec2((at + 2) % width, (at + 2) / width), 0).rgb, vec3(2.2)) * lightmap_scale_2;
 	}
 }
 
