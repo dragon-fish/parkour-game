@@ -87,12 +87,6 @@ const DOME_RADIUS_M := 2500.0
 ## The world's tone mapping settings (me_tone_settings.gd). Inside one of the
 ## PostProcessVolumes children, that volume's replace them.
 @export var tone: Resource = null
-## [ME:CONFIRMED TM1] the player's Brightness slider: DisplayGamma = Brightness
-## / 10 * 1.5 + 1.25, 2.0 at the game's default of 5.
-@export var display_gamma := 2.0
-## [ME:CONFIRMED TM1] the Contrast slider: Contrast / 10 * 0.6 + 0.7, 1.0 at
-## the default of 5. Added to every curve segment's slope.
-@export var contrast := 1.0
 
 # ---- dials ----
 
@@ -342,8 +336,9 @@ func _apply_tone_map(env: Environment, world: WorldEnvironment) -> void:
 	env.glow_enabled = false
 	env.adjustment_enabled = false
 	_tone_effect = ToneMap.new()
-	_tone_effect.set("display_gamma", display_gamma)
-	_tone_effect.set("contrast", contrast)
+	var settings := SettingsStore.load_settings()
+	_tone_effect.set("display_gamma", display_gamma(float(settings.brightness)))
+	_tone_effect.set("contrast", contrast(float(settings.contrast)))
 	var compositor := Compositor.new()
 	compositor.compositor_effects = [_tone_effect]
 	world.compositor = compositor
@@ -354,6 +349,18 @@ func _apply_tone_map(env: Environment, world: WorldEnvironment) -> void:
 		if node.get_script() == VolumeScript and node.get("enabled"):
 			_volumes.append(node)
 	_volumes.sort_custom(func(a: Node, b: Node) -> bool: return a.get("priority") > b.get("priority"))
+
+
+## [ME:CONFIRMED TM1] the Brightness slider, 0..10 (SettingsStore):
+## SetGamma(Brightness / 10) makes DisplayGamma g * 1.5 + 1.25.
+static func display_gamma(brightness: float) -> float:
+	return brightness / 10.0 * 1.5 + 1.25
+
+
+## [ME:CONFIRMED TM1] the Contrast slider, 0..10: c * 0.6 + 0.7, added less one
+## to every curve segment's slope.
+static func contrast(slider: float) -> float:
+	return slider / 10.0 * 0.6 + 0.7
 
 
 ## [ME:CONFIRMED TM1 0x00c15ee0, 0x00b3e810] the settings in force are those of

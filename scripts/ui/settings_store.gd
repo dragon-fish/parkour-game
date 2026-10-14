@@ -68,6 +68,13 @@ static func defaults() -> Dictionary:
 		# On: it is the original's look. Off takes every cloth and loose box
 		# out of the physics server, which is most of what they cost.
 		physics_props = true,
+		# The original's own video options, on its own 0..10 sliders: what an
+		# extracted Mirror's Edge level is tone mapped with (me_environment.gd
+		# turns them into DisplayGamma and Contrast). A player's setting in the
+		# original, not a level's. Brightness 2, not the original's default of
+		# 5: the owner plays at 2, and his screenshots are the reference.
+		brightness = 2,
+		contrast = 5,
 		# action -> its two bindings. See InputBindings for the shape; the
 		# defaults are the keys this project read before bindings existed.
 		bindings = InputBindings.defaults(),
