@@ -29,6 +29,7 @@ import matinee
 import particles
 import environment
 import kismet
+import lightmaps
 import streaming
 
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
@@ -205,7 +206,8 @@ class MeshTable:
         MaterialInstance parents to the root Material across packages. A light
         shaft is an additive unlit card; drawn opaque it becomes a grey slab."""
         if not reference:
-            return {'blend': 'opaque', 'unlit': False, 'two_sided': False, 'uncontrolled_slide': False}
+            return {'blend': 'opaque', 'unlit': False, 'nondirectional': False, 'two_sided': False,
+                    'uncontrolled_slide': False}
         key = (mr.label, reference)
         if key not in self._materials:
             reader, idx = mr, reference
@@ -226,8 +228,13 @@ class MeshTable:
                 if reader.pkg.class_of(reader.pkg.exports[idx - 1]) == 'Material' or not parent:
                     blend = str(props.get('BlendMode', 'BLEND_Opaque')).replace('BLEND_', '').lower()
                     unlit = props.get('LightingModel') == 'MLM_Unlit'
+                    # [ME:CONFIRMED Engine/Shaders/BasePassPixelShader.usf] a
+                    # non-directional surface takes every lightmap coefficient
+                    # whole instead of weighting them by its normal.
+                    nondirectional = props.get('LightingModel') == 'MLM_NonDirectional'
                     two_sided = props.get('TwoSided') is True
-                    self._materials[key] = {'blend': blend, 'unlit': unlit, 'two_sided': two_sided,
+                    self._materials[key] = {'blend': blend, 'unlit': unlit, 'nondirectional': nondirectional,
+                                            'two_sided': two_sided,
                                             'uncontrolled_slide': self._phys_flag(phys, 'bEnableUncontrolledSlide')}
                     break
                 idx = parent[1]
@@ -441,7 +448,7 @@ def _det(b):
             + b[2][0] * (b[0][1] * b[1][2] - b[0][2] * b[1][1]))
 
 
-def collect_placements(mr, meshes, config, report, keep=frozenset()):
+def collect_placements(mr, meshes, config, report, atlases, keep=frozenset()):
     pkg = mr.pkg
     out = []
     held = kismet_held(mr)
@@ -558,6 +565,10 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                 cloth['wind'] = point(component['ClothWind'])
             if component.get('ClothBlendWeight', 1.0) != 1.0:
                 cloth['blend'] = round(component['ClothBlendWeight'], 4)
+        # The original's baked light on this placement, from its own
+        # component: a delta that often carries nothing else. A mover or a
+        # rigid body has none and is lit live, as in the original.
+        lightmap = atlases.entry(mr, lightmaps.component_lightmap(mr, component_idx), record['vertex_count'])             if component_idx and not skinned else None
         base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') or skinned else None
         base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
@@ -569,6 +580,7 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                    | ({'collision_if_on': if_on} if if_on != 'none' else {})
                    | ({'materials': overrides} if any(overrides) else {})
                    | ({'shadow_only': True} if shadow_only else {})
+                   | ({'lightmap': lightmap} if lightmap else {})
                    | ({'cloth': cloth} if cloth else {})
                    | ({'rigid': rigid} if rigid else {})
                    | ({'runner_vision': runner_vision(actor)} if actor.get('bLOIObject') else {}))
@@ -757,6 +769,7 @@ def main(config_path):
               'counts': {'empty_actor': 0, 'excluded_by_config': 0, 'excluded_fx': 0,
                          'excluded_by_anchor': 0, 'hidden': 0}}
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
+    atlases = lightmaps.Atlases(os.path.join(out_dir, 'lightmaps'), report)
     defaults = annotations.blocking_defaults(packages)
     placements, found_lights, bsp, matinees, end_links, emitters = [], [], [], [], [], []
     # Particle textures are baked like any material's, at the level's texture size.
@@ -772,7 +785,7 @@ def main(config_path):
         mr = packages.reader(name)
         glass = matinee.collect_glass(packages, mr, report)
         panes = frozenset(g['name'] for g in glass)
-        placements += collect_placements(mr, meshes, config, report, panes)
+        placements += collect_placements(mr, meshes, config, report, atlases, panes)
         emitters += particles.collect_emitters(packages, mr, templates, report)
         collected = annotations.collect(packages, mr, defaults, report)
         once = matinee.self_disabling(mr)
@@ -797,8 +810,16 @@ def main(config_path):
                                     flight_of=lambda *where: flight_of(meshes, *where), puppet_plays=plays)
         notes['annotations'] += glass
         end_links.append((name, matinee.level_end_links(packages, mr)))
+        bsp_lightmaps = lightmaps.bsp_lightmaps(mr)
         for face in lights.collect_bsp(mr):
             face['package'] = name
+            # The element of a ModelComponent that owns the node carries the
+            # lightmap; its coordinates are the node's own ShadowTexCoords.
+            lightmap = atlases.entry(mr, bsp_lightmaps.get(face.pop('node')))
+            uvs = face.pop('lightmap_uvs')
+            if lightmap:
+                face['lightmap'] = lightmap
+                face['lightmap_uvs'] = uvs
             # Baked and described like any placement's material, so the builder
             # reads a BSP face and a per-placement override the same way.
             ref = face.pop('material_ref')

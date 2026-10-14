@@ -125,7 +125,7 @@ def collect_bsp(mr):
         surfs = [data[cursor + i * BSP_SURF_SIZE:cursor + (i + 1) * BSP_SURF_SIZE] for i in range(surface_count)]
         cursor += surface_count * BSP_SURF_SIZE
         verts = bulk(24)
-        for node in nodes:
+        for node_index, node in enumerate(nodes):
             plane = struct.unpack_from('<4f', node)
             pool = struct.unpack_from('<i', node, 16)[0]
             surf_index = struct.unpack_from('<i', node, 20)[0]
@@ -140,9 +140,14 @@ def collect_bsp(mr):
                 struct.unpack_from('<i', surf, offset)[0] for offset in (0, 8, 16, 20))
             base = points[base_index]
             texture_u, texture_v = vectors[u_index], vectors[v_index]
-            polygon, uvs = [], []
+            polygon, uvs, lightmap_uvs = [], [], []
             for vertex in verts[pool:pool + count]:
-                p = points[struct.unpack_from('<i', vertex)[0]]
+                # FVert: the point, the side, then ShadowTexCoord -- where the
+                # vertex lies in its element's lightmap, before the element's
+                # own scale and bias.
+                point_index, _side, shadow_u, shadow_v = struct.unpack_from('<2i2f', vertex)
+                p = points[point_index]
+                lightmap_uvs.append([round(shadow_u, 6), round(shadow_v, 6)])
                 # A parse error puts a vertex metres off; float rounding at
                 # Mall's coordinates leaves one 0.19 uu off (2 mm).
                 if abs(sum(plane[k] * p[k] for k in range(3)) - plane[3]) > BSP_PLANE_SLACK_UU:
@@ -152,5 +157,6 @@ def collect_bsp(mr):
                 uvs.append([round(sum(offset[k] * texture_u[k] for k in range(3)) / BSP_TEXEL_SCALE, 5),
                             round(sum(offset[k] * texture_v[k] for k in range(3)) / BSP_TEXEL_SCALE, 5)])
             faces.append({'vertices': polygon, 'normal': [plane[0], plane[2], plane[1]],
-                          'uvs': uvs, 'material_ref': material_ref})
+                          'uvs': uvs, 'material_ref': material_ref,
+                          'node': (index, node_index), 'lightmap_uvs': lightmap_uvs})
     return faces

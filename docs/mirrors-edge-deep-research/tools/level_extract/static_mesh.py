@@ -88,7 +88,7 @@ def parse_render(mr, idx):
     # stretched and offset. The Godot mesh still carries ONE set per surface,
     # whichever the material asked for (mesh_library._uv_set).
     uvs = [[] for _ in range(tex_coords)]
-    vertices, normals = [], []
+    vertices, normals, tangents = [], [], []
     zero_normals = False
     for k in range(vertex_count):
         x, y, z = struct.unpack_from('<3f', d, position_start + k * 12)
@@ -107,6 +107,7 @@ def parse_render(mr, idx):
         if abs(length - 1.0) > 0.03:
             raise ExtractError('%s: normal %d has length %.3f' % (where, k, length))
         normals.extend((n[0] / length, n[2] / length, n[1] / length))
+        tangents.extend(godot_tangent(d[vertex_start + k * stride:vertex_start + k * stride + 8]))
 
     surfaces = []
     for el in elements:
@@ -125,6 +126,12 @@ def parse_render(mr, idx):
     return {
         'vertices': _b64('f', vertices),
         'normals': None if zero_normals else _b64('f', normals),
+        # TangentX and the binormal's sign, for the lightmap's specular term,
+        # which is evaluated in the mesh's own tangent space.
+        'tangents': None if zero_normals else _b64('f', tangents),
+        # [ME:CONFIRMED Engine/Shaders/LocalVertexFactory.usf] the set the
+        # lightmap is sampled in; the class default is 0.
+        'lightmap_uv_set': int((props or {}).get('LightMapCoordinateIndex', 0)),
         # Texture coordinates by set: 0 for textures, 1 is usually the lightmap
         # set, which some facade materials also sample.
         'uvs': [_b64('f', channel) for channel in uvs],
@@ -137,6 +144,23 @@ def parse_render(mr, idx):
         'body_setup': body,
         'use_simple_box_collision': (props or {}).get('UseSimpleBoxCollision', True),
     }
+
+
+def godot_tangent(packed):
+    """TangentX and the binormal sign of one vertex (two FPackedNormals: TangentX,
+    then TangentZ whose w is the sign) as Godot's (x, y, z, w).
+
+    [ME:CONFIRMED Engine/Shaders/LocalVertexFactory.usf] the original's
+    binormal is cross(TangentZ, TangentX) * TangentZ.w. Godot's is
+    cross(normal, tangent) * w. The axis map is a reflection, and a reflection
+    turns a cross product round: M(a x b) = -(Ma x Mb). Carried over with the
+    same sign, every binormal would point the other way and every specular
+    highlight off a lightmap would sit mirrored across the tangent.
+    """
+    x = [b / 127.5 - 1.0 for b in packed[0:3]]
+    sign = 1.0 if packed[7] >= 128 else -1.0
+    length = math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]) or 1.0
+    return (x[0] / length, x[2] / length, x[1] / length, -sign)
 
 
 def simple_collision(mr, body_idx):
