@@ -42,15 +42,15 @@ uniform sampler2D lightmap_1 : source_color, filter_linear_mipmap, repeat_disabl
 uniform sampler2D lightmap_2 : source_color, filter_linear_mipmap, repeat_disable;
 
 // Per placement: where it lies in its atlas, and each coefficient's scale.
-// Every placement draws its own copy of the material. DO NOT make these
-// instance uniforms: loaded from the scene file, Godot 4.7 left a share of
-// the instances reading other values than their own (measured in the
-// tutorial: a lit construction tent drew black until its parameters were
-// set again by hand at runtime).
-uniform vec4 lightmap_uv_scale_bias = vec4(1.0, 1.0, 0.0, 0.0);
-uniform vec3 lightmap_scale_0 = vec3(1.0);
-uniform vec3 lightmap_scale_1 = vec3(1.0);
-uniform vec3 lightmap_scale_2 = vec3(1.0);
+// Instance uniforms, so placements share their materials and Godot can draw
+// them instanced: a copy of the material per placement doubled the
+// tutorial's draw calls and cost the overview shot 1.7 ms of CPU a frame.
+// Loaded from a scene file, Godot 4.7 leaves some instances reading the
+// defaults instead (a lit tent drew black): me_lightmapped.gd sets them again.
+instance uniform vec4 lightmap_uv_scale_bias = vec4(1.0, 1.0, 0.0, 0.0);
+instance uniform vec3 lightmap_scale_0 = vec3(1.0);
+instance uniform vec3 lightmap_scale_1 = vec3(1.0);
+instance uniform vec3 lightmap_scale_2 = vec3(1.0);
 
 varying vec3 vertex_light_0;
 varying vec3 vertex_light_1;

@@ -2,10 +2,10 @@
 extends RefCounted
 
 # The original's baked lighting onto an extracted level's static geometry: each
-# lightmapped placement draws its surfaces with its own copies of the mesh
-# library's lightmapped materials (me_lightmap.gdshaderinc), which carry where
-# it lies in its atlas and each coefficient's scale. A vertex lightmap's
-# samples ride on the placement's own copy of the mesh.
+# lightmapped placement draws its surfaces with the mesh library's lightmapped
+# materials (me_lightmap.gdshaderinc) and carries where it lies in its atlas,
+# and each coefficient's scale, as instance shader parameters. A vertex
+# lightmap's samples ride on the placement's own copy of the mesh.
 #
 # Everything is in the generated geometry scene: the materials as its
 # sub-resources, the atlases as texture files beside it. Nothing is assembled
@@ -21,7 +21,6 @@ var library = null
 var counts := {texture = 0, vertex = 0, unlit_surfaces = 0}
 
 var _atlases := {}
-var _placed := {}
 
 
 func _init(extract_dir: String, level_dir: String, mesh_library) -> void:
@@ -81,38 +80,22 @@ func apply(instance: MeshInstance3D, lightmap: Dictionary, overrides: Array) -> 
 		if slot >= 0 and slot < overrides.size() and overrides[slot] is Dictionary \
 				and library.override_material(overrides[slot]) != null:
 			entry = overrides[slot]
-		var material := placed(library.lightmap_material(entry, textures), lightmap)
+		var material: Material = library.lightmap_material(entry, textures)
 		if material == null:
 			counts.unlit_surfaces += 1
 			continue
 		instance.set_surface_override_material(surface, material)
-
-
-## A lightmapped material as one placement draws it: a copy carrying where the
-## placement lies in its atlas and each coefficient's scale. Shared by
-## placements whose lightmap is the same.
-func placed(base: ShaderMaterial, lightmap: Dictionary) -> ShaderMaterial:
-	if base == null:
-		return null
-	var described := lightmap.duplicate()
-	described.erase("samples")
-	var key := [base.get_instance_id(), described]
-	if _placed.has(key):
-		return _placed[key]
-	var material := base.duplicate() as ShaderMaterial
-	set_parameters(material, lightmap)
-	_placed[key] = material
-	return material
+	set_parameters(instance, lightmap)
 
 
 ## Where the placement lies in its atlas and each coefficient's scale.
-static func set_parameters(material: ShaderMaterial, lightmap: Dictionary) -> void:
+static func set_parameters(instance: GeometryInstance3D, lightmap: Dictionary) -> void:
 	if lightmap["kind"] == "texture":
 		var s: Array = lightmap["uv_scale"]
 		var b: Array = lightmap["uv_bias"]
-		material.set_shader_parameter(&"lightmap_uv_scale_bias", Vector4(s[0], s[1], b[0], b[1]))
+		instance.set_instance_shader_parameter(&"lightmap_uv_scale_bias", Vector4(s[0], s[1], b[0], b[1]))
 	for k in 3:
-		material.set_shader_parameter(StringName("lightmap_scale_%d" % k), Common.v3(lightmap["scales"][k]))
+		instance.set_instance_shader_parameter(StringName("lightmap_scale_%d" % k), Common.v3(lightmap["scales"][k]))
 
 
 ## A texture lightmap's three coefficient textures; empty for a vertex

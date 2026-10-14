@@ -71,20 +71,13 @@ func test_a_lit_surface_gets_the_lightmap_shader_and_an_unlit_one_keeps_its_own(
 			"an additive surface is not drawn at all")
 
 
-func test_each_placement_draws_its_own_copy_carrying_where_it_lies_in_its_atlas() -> void:
-	var library := MeLibrary.new()
-	var lightmaps := MeLightmaps.new("user://none", "user://test_me_lightmaps", library)
-	var base: ShaderMaterial = library.lightmap_material({material = "M_None", blend = "opaque"}, [])
-	var here := {kind = "texture", uv_scale = [0.25, 0.5], uv_bias = [0.125, 0.75],
-			scales = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]}
-	var there := here.duplicate(true)
-	there.uv_bias = [0.5, 0.5]
-	var a := lightmaps.placed(base, here)
-	assert_ne(a, base, "a placement wrote into the shared material")
-	assert_eq(a.get_shader_parameter(&"lightmap_uv_scale_bias"), Vector4(0.25, 0.5, 0.125, 0.75))
-	assert_eq(a.get_shader_parameter(&"lightmap_scale_2"), Vector3(7.0, 8.0, 9.0))
-	assert_eq(lightmaps.placed(base, here.duplicate(true)), a, "the same lightmap made a second copy")
-	assert_ne(lightmaps.placed(base, there), a, "two allocations shared one material")
+func test_where_a_placement_lies_in_its_atlas_is_on_its_instance() -> void:
+	var instance := MeshInstance3D.new()
+	MeLightmaps.set_parameters(instance, {kind = "texture", uv_scale = [0.25, 0.5], uv_bias = [0.125, 0.75],
+			scales = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]})
+	assert_eq(instance.get_instance_shader_parameter(&"lightmap_uv_scale_bias"), Vector4(0.25, 0.5, 0.125, 0.75))
+	assert_eq(instance.get_instance_shader_parameter(&"lightmap_scale_2"), Vector3(7.0, 8.0, 9.0))
+	instance.free()
 
 
 func _lightmapped(root: Node) -> Array[GeometryInstance3D]:
@@ -111,11 +104,11 @@ func test_the_tutorials_static_geometry_draws_with_its_lightmaps_from_the_file()
 	assert_gt(lit.size(), 2000, "the lightmapped materials are not in the scene file")
 	var unplaced := 0
 	for instance in lit:
-		for surface in (instance as MeshInstance3D).get_surface_override_material_count():
-			var material := (instance as MeshInstance3D).get_surface_override_material(surface) as ShaderMaterial
-			if material != null and material.get_shader_parameter(&"lightmap_scale_0") == null:
-				unplaced += 1
-	assert_eq(unplaced, 0, "lightmapped surfaces with no coefficient scale of their own")
+		if instance.get_instance_shader_parameter(&"lightmap_scale_0") == null:
+			unplaced += 1
+	assert_eq(unplaced, 0, "lightmapped instances with no coefficient scale of their own")
+	assert_eq(root.get_script(), load("res://tools/me_level/me_lightmapped.gd"),
+			"the geometry root lost the script that sets the lightmap parameters again")
 	root.free()
 
 

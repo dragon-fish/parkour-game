@@ -11,6 +11,7 @@ const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const ENVIRONMENT_SCRIPT := preload("res://tools/me_level/me_environment.gd")
 const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
 const TONE_SETTINGS := preload("res://tools/me_level/me_tone_settings.gd")
+const LIGHTMAPPED_SCRIPT := preload("res://tools/me_level/me_lightmapped.gd")
 const POST_PROCESS_VOLUME_SCRIPT := preload("res://tools/me_level/me_post_process_volume.gd")
 
 ## Meshes a hand grips. InterestLine volumes drive those moves, so a solid mesh
@@ -74,6 +75,8 @@ const LIGHT_FADE_LENGTH := 20.0
 func build(manifest: Dictionary, root_name: String) -> Node3D:
 	var root := Node3D.new()
 	root.name = root_name
+	if lightmaps != null:
+		root.set_script(LIGHTMAPPED_SCRIPT)
 	var geometry := Node3D.new()
 	geometry.name = "Geometry"
 	root.add_child(geometry)
@@ -983,10 +986,11 @@ func _bsp_lightmapped(group: Dictionary) -> MeshInstance3D:
 	for i in group.order.size():
 		var entry: Dictionary = group.entries[group.order[i]]
 		mesh.surface_set_name(i, group.order[i])
-		var material: Material = lightmaps.placed(library.lightmap_material(entry, textures), group.lightmap) 				if library != null else null
+		var material: Material = library.lightmap_material(entry, textures) if library != null else null
 		if material == null and library != null:
 			material = library.override_material(entry)
 		mesh.surface_set_material(i, material)
+	lightmaps.set_parameters(instance, group.lightmap)
 	lightmaps.counts.texture += 1
 	return instance
 
