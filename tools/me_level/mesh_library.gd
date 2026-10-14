@@ -27,7 +27,14 @@ const SPECULAR_SCALE := 0.5
 const SHEEN_SCALE := 0.5
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 9
+const LIBRARY_FORMAT := 10
+## What a lightmapped surface draws with, by the original's blend mode. A blend
+## that is not here (additive, modulate) is not lit by its lightmap.
+const LIGHTMAP_SHADERS := {
+	"opaque": preload("res://tools/me_level/me_lightmap.gdshader"),
+	"masked": preload("res://tools/me_level/me_lightmap_masked.gdshader"),
+	"translucent": preload("res://tools/me_level/me_lightmap_translucent.gdshader"),
+}
 
 ## How strongly the baked normal maps read. The original's are genuinely
 ## subtle -- its tangent channels sit within a couple of percent of flat, which
@@ -44,6 +51,8 @@ var baker_tint_strength := 1.0
 var _materials := {}
 var _bakes := {}
 var _bake_hashes := {}
+var _textures := {}
+var _lightmapped := {}
 
 
 static func path_for(mesh_name: String) -> String:
@@ -112,6 +121,18 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			var rgb: Array = bake["loi_color"]
 			mesh.set_meta("loi_color", Color(rgb[0], rgb[1], rgb[2]))
 			break
+	# The set the original's lightmap is sampled in, as UV2 on every surface,
+	# and the tangents its specular is worked out in. Skinned scenery has
+	# neither.
+	var uv2 := PackedVector2Array()
+	if record.has("lightmap_uv_set"):
+		uv2 = _uvs(record, int(record["lightmap_uv_set"]), positions.size())
+	var tangents := PackedFloat32Array()
+	if record.get("tangents") != null:
+		tangents = Marshalls.base64_to_raw(record["tangents"]).to_float32_array()
+		if tangents.size() != positions.size() * 4:
+			push_error("[me_level] %s: %d tangent values for %d vertices" % [name, tangents.size(), positions.size()])
+			return null
 	var collision_faces := PackedVector3Array()
 	# Faces of surfaces whose material the original marks
 	# bEnableUncontrolledSlide: a separate shape, so the placement can carry
@@ -124,6 +145,14 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 	# two-sided element becomes two surfaces while a modulate one becomes none,
 	# so this cannot be recovered from the surface index either.
 	var slots := PackedInt32Array()
+	# What each surface draws, in surface order, for the level to give a
+	# lightmapped placement its lightmapped materials: {material, blend, unlit,
+	# nondirectional}.
+	var drawn: Array[Dictionary] = []
+	# For a surface built flat (no normals in the original), the original
+	# vertex each of its vertices came from: a vertex lightmap is per original
+	# vertex. Empty for every other surface.
+	var sources: Array[PackedInt32Array] = []
 	for element in record["surfaces"].size():
 		var surface: Dictionary = record["surfaces"][element]
 		var indices := _indices(surface["indices"])
@@ -149,8 +178,12 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			material = _textured_material(material_name, surface["blend"], surface["unlit"])
 		else:
 			material = _material(Common.material_family(material_name, name), surface["blend"], surface["unlit"])
-		_add_surface(mesh, positions, normals, uvs, indices, material, material_name)
+		var described := {material = material_name, blend = surface["blend"], unlit = surface["unlit"],
+				nondirectional = surface.get("nondirectional", false)}
+		_add_surface(mesh, positions, normals, uvs, uv2, tangents, indices, material, material_name)
 		slots.append(surface["slot"])
+		drawn.append(described)
+		sources.append(indices if normals.is_empty() else PackedInt32Array())
 		if surface.get("two_sided", false) and surface["blend"] != "additive":
 			# DO NOT draw two-sided surfaces with CULL_DISABLED. A placement with a
 			# mirroring transform (negative scale) gets FRONT_FACING inverted,
@@ -164,8 +197,10 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			back_normals.resize(normals.size())
 			for i in normals.size():
 				back_normals[i] = -normals[i]
-			_add_surface(mesh, positions, back_normals, uvs, back_indices, material, material_name + "_back")
+			_add_surface(mesh, positions, back_normals, uvs, uv2, tangents, back_indices, material, material_name + "_back")
 			slots.append(surface["slot"])
+			drawn.append(described)
+			sources.append(back_indices if normals.is_empty() else PackedInt32Array())
 	var simple: Array[Shape3D] = []
 	for shape: Dictionary in record["simple_shapes"]:
 		var convex := ConvexPolygonShape3D.new()
@@ -175,6 +210,8 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		convex.points = points
 		simple.append(convex)
 	mesh.set_meta("surface_slots", slots)
+	mesh.set_meta("surface_materials", drawn)
+	mesh.set_meta("flat_sources", sources)
 	mesh.set_meta("simple_shapes", simple)
 	# Whether a pawn's box takes the hulls rather than the triangles: with it
 	# set and no hulls, the mesh blocks nothing (see the extractor's
@@ -200,16 +237,20 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 
 
 func _add_surface(mesh: ArrayMesh, positions: PackedVector3Array, normals: PackedVector3Array,
-		uvs: PackedVector2Array, indices: PackedInt32Array, material: Material, surface_name: String) -> void:
+		uvs: PackedVector2Array, uv2: PackedVector2Array, tangents: PackedFloat32Array,
+		indices: PackedInt32Array, material: Material, surface_name: String) -> void:
 	var arrays := []
 	if normals.is_empty():
-		# The original cooked this mesh without normals: shade it flat.
+		# The original cooked this mesh without normals: shade it flat. One
+		# vertex per corner, in index order (the mesh's flat_sources).
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		st.set_smooth_group(-1)
 		for index in indices:
 			if not uvs.is_empty():
 				st.set_uv(uvs[index])
+			if not uv2.is_empty():
+				st.set_uv2(uv2[index])
 			st.add_vertex(positions[index])
 		st.generate_normals()
 		arrays = st.commit_to_arrays()
@@ -220,6 +261,10 @@ func _add_surface(mesh: ArrayMesh, positions: PackedVector3Array, normals: Packe
 		arrays[Mesh.ARRAY_INDEX] = indices
 		if not uvs.is_empty():
 			arrays[Mesh.ARRAY_TEX_UV] = uvs
+		if not uv2.is_empty():
+			arrays[Mesh.ARRAY_TEX_UV2] = uv2
+		if not tangents.is_empty():
+			arrays[Mesh.ARRAY_TANGENT] = tangents
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
 	mesh.surface_set_name(mesh.get_surface_count() - 1, surface_name)
@@ -352,19 +397,11 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 		if existing != null and existing.get_meta("source_hash", "") == hash:
 			_materials[key] = load(path)
 			return _materials[key]
-	var image := Image.new()
-	if image.load_png_from_buffer(Marshalls.base64_to_raw(bake["png"])) != OK:
-		push_error("[me_level] material %s: unreadable bake" % material_name)
+	var textures := _bake_textures(material_name)
+	if not textures.has("albedo"):
 		return _material("default", blend, unlit)
-	image.convert(Image.FORMAT_RGBA8)
-	image.generate_mipmaps()
-	# Block-compressed in VRAM (BC7, one byte a pixel against four): the
-	# bakes are 256 px now and a chapter carries hundreds. The mips are what
-	# let a far wall sample a small level of it; no streaming in Godot 4.7,
-	# so the whole chain is resident and this is where the memory is saved.
-	image.compress(Image.COMPRESS_BPTC, Image.COMPRESS_SOURCE_SRGB)
 	var material := StandardMaterial3D.new()
-	material.albedo_texture = ImageTexture.create_from_image(image)
+	material.albedo_texture = textures["albedo"]
 	material.albedo_color = TEXTURE_ALBEDO
 	if bake.has("baker_tint"):
 		# The colour the original's lightmap carried and the diffuse does not
@@ -373,15 +410,10 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 		material.albedo_color *= Color(1.0, 1.0, 1.0).lerp(
 				Color(tint[0], tint[1], tint[2]), clampf(baker_tint_strength, 0.0, 1.0))
 	material.uv1_scale = Vector3(bake["tiling"][0], bake["tiling"][1], 1.0)
-	if bake.has("normal_png"):
-		var normal := Image.new()
-		if normal.load_png_from_buffer(Marshalls.base64_to_raw(bake["normal_png"])) == OK:
-			normal.convert(Image.FORMAT_RGBA8)
-			normal.generate_mipmaps()
-			normal.compress(Image.COMPRESS_BPTC, Image.COMPRESS_SOURCE_NORMAL)
-			material.normal_enabled = true
-			material.normal_texture = ImageTexture.create_from_image(normal)
-			material.normal_scale = normal_scale
+	if textures.has("normal"):
+		material.normal_enabled = true
+		material.normal_texture = textures["normal"]
+		material.normal_scale = normal_scale
 	var roughness: float = float(bake.get("roughness", DEFAULT_ROUGHNESS))
 	material.roughness = roughness
 	if bake.has("specular"):
@@ -421,6 +453,105 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	ResourceSaver.save(material, path, ResourceSaver.FLAG_COMPRESS)
 	_materials[key] = load(path)
 	return _materials[key]
+
+
+## The images a material's bake carries, each a texture file of its own in
+## the library: the plain material and every lightmapped one draw the same
+## file. {albedo, normal, emissive}, whichever the bake has.
+func _bake_textures(material_name: String) -> Dictionary:
+	if _textures.has(material_name):
+		return _textures[material_name]
+	var bake: Dictionary = _bakes[material_name]
+	var hash := JSON.stringify([bake, LIBRARY_FORMAT]).sha256_text()
+	var out := {}
+	for kind: Array in [["albedo", "png", Image.COMPRESS_SOURCE_SRGB],
+			["normal", "normal_png", Image.COMPRESS_SOURCE_NORMAL],
+			["emissive", "emissive_png", Image.COMPRESS_SOURCE_SRGB]]:
+		if bake.has(kind[1]):
+			var texture := _texture_file(material_name, kind[0], bake[kind[1]], kind[2], hash)
+			if texture != null:
+				out[kind[0]] = texture
+	_textures[material_name] = out
+	return out
+
+
+func _texture_file(material_name: String, kind: String, png: String, source: Image.CompressSource,
+		hash: String) -> Texture2D:
+	var dir := Common.LIBRARY_DIR.path_join("materials").path_join("textures")
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var path := dir.path_join("%s_%s.res" % [material_name.validate_filename(), kind])
+	if ResourceLoader.exists(path):
+		var existing: Resource = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+		if existing != null and existing.get_meta("source_hash", "") == hash:
+			return load(path)
+	var image := Image.new()
+	if image.load_png_from_buffer(Marshalls.base64_to_raw(png)) != OK:
+		push_error("[me_level] material %s: unreadable %s bake" % [material_name, kind])
+		return null
+	image.convert(Image.FORMAT_RGBA8)
+	image.generate_mipmaps()
+	# Block-compressed in VRAM (BC7, one byte a pixel against four): the
+	# bakes are 256 px now and a chapter carries hundreds. The mips are what
+	# let a far wall sample a small level of it; no streaming in Godot 4.7,
+	# so the whole chain is resident and this is where the memory is saved.
+	image.compress(Image.COMPRESS_BPTC, source)
+	var texture := ImageTexture.create_from_image(image)
+	texture.set_meta("source_hash", hash)
+	ResourceSaver.save(texture, path, ResourceSaver.FLAG_COMPRESS)
+	return load(path)
+
+
+## The material a surface lit by its lightmap draws with, or null for one the
+## lightmap does not light: an unlit surface shows its own colour, and an
+## additive or modulate one is not drawn. `atlas` is a texture lightmap's
+## three coefficient textures, or empty for a vertex lightmap, whose samples
+## ride on the placement's own copy of the mesh.
+##
+## No TEXTURE_ALBEDO and no baker_tint: both stand in for what the lightmap
+## carries itself -- the brightness the bake gave the surface and the colour
+## Beast was told it has.
+func lightmap_material(entry: Dictionary, atlas: Array) -> ShaderMaterial:
+	var blend: String = entry.get("blend", "opaque")
+	if entry.get("unlit", false) or not LIGHTMAP_SHADERS.has(blend):
+		return null
+	var material_name: String = entry["material"] if entry.get("material") != null else ""
+	var key := "%s|%s|%s|%s" % [material_name, blend, entry.get("nondirectional", false),
+			",".join(atlas.map(func(t: Texture2D) -> String: return t.resource_path))]
+	if _lightmapped.has(key):
+		return _lightmapped[key]
+	var material := ShaderMaterial.new()
+	material.shader = LIGHTMAP_SHADERS[blend]
+	if _bakes.has(material_name):
+		var bake: Dictionary = _bakes[material_name]
+		var textures := _bake_textures(material_name)
+		if textures.has("albedo"):
+			material.set_shader_parameter("albedo_texture", textures["albedo"])
+			material.set_shader_parameter("use_albedo_texture", true)
+		if textures.has("normal"):
+			material.set_shader_parameter("normal_texture", textures["normal"])
+			material.set_shader_parameter("use_normal_texture", true)
+			material.set_shader_parameter("normal_scale", normal_scale)
+		if textures.has("emissive"):
+			material.set_shader_parameter("emissive_texture", textures["emissive"])
+			material.set_shader_parameter("use_emissive_texture", true)
+		material.set_shader_parameter("uv1_scale", Vector2(bake["tiling"][0], bake["tiling"][1]))
+		if bake.has("specular"):
+			material.set_shader_parameter("specular", maxf(float(bake["specular"]), 0.0))
+		if bake.has("specular_power"):
+			material.set_shader_parameter("specular_power", float(bake["specular_power"]))
+	else:
+		# No bake (DefaultMaterial, or one whose graph did not evaluate): the
+		# family colour, lit by the bake like any other.
+		var color: Color = Common.MATERIAL_PALETTE[Common.material_family(material_name, "")].srgb_to_linear()
+		material.set_shader_parameter("albedo_color", Vector3(color.r, color.g, color.b))
+	material.set_shader_parameter("nondirectional", entry.get("nondirectional", false))
+	if atlas.is_empty():
+		material.set_shader_parameter("vertex_lightmap", true)
+	else:
+		for k in atlas.size():
+			material.set_shader_parameter("lightmap_%d" % k, atlas[k])
+	_lightmapped[key] = material
+	return material
 
 
 static func _vectors(encoded: String) -> PackedVector3Array:

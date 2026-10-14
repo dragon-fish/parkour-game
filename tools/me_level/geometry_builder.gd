@@ -136,6 +136,8 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			instance.visible = true
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_apply_overrides(instance, placement)
+		if lightmaps != null and placement.has("lightmap") and not cloth:
+			lightmaps.apply(instance, placement["lightmap"], placement.get("materials", []))
 		if cloth:
 			_cloth_draws_both_sides(instance as SoftBody3D)
 		var rest: MeshInstance3D = _cloth_rest(mesh) if cloth else null
@@ -379,9 +381,9 @@ static func _build_occluder(nodes: Array, bsp: Node3D) -> OccluderInstance3D:
 		if (xform.basis * instance.mesh.get_aabb().size).abs().length() < OCCLUDER_MIN_EXTENT:
 			continue
 		_add_occluding(instance, xform, vertices, indices)
-	var bsp_mesh := (bsp.get_node_or_null("Mesh") if bsp != null else null) as MeshInstance3D
-	if bsp_mesh != null:
-		_add_occluding(bsp_mesh, bsp.transform * bsp_mesh.transform, vertices, indices)
+	for child in (bsp.get_children() if bsp != null else []):
+		if child is MeshInstance3D:
+			_add_occluding(child, bsp.transform * (child as MeshInstance3D).transform, vertices, indices)
 	if indices.is_empty():
 		return null
 	var shape := ArrayOccluder3D.new()
@@ -399,6 +401,8 @@ static func _add_occluding(instance: MeshInstance3D, xform: Transform3D,
 		if material == null:
 			material = instance.mesh.surface_get_material(surface)
 		if material is BaseMaterial3D and (material as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+			continue
+		if material is ShaderMaterial and (material as ShaderMaterial).shader != MeLibrary.LIGHTMAP_SHADERS["opaque"]:
 			continue
 		var arrays := instance.mesh.surface_get_arrays(surface)
 		var positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
@@ -474,6 +478,9 @@ var _stretched_shapes := {}
 var library = null
 ## The level's emitter builder (me_particles.gd), or null for none.
 var particles = null
+## The level's baked lighting (me_lightmaps.gd), or null to draw every surface
+## with its plain material under live light.
+var lightmaps = null
 ## The level config's "look" block: me_environment.gd dials by export name,
 ## plus LAMP_DIAL for the lights' energy_scale. Read from the config file the
 ## build was asked for, not from the manifest's copy of it, so a dial can be
@@ -834,6 +841,9 @@ func _build_bsp(faces: Array) -> StaticBody3D:
 	var tools := {}
 	var entries := {}
 	var order: Array[String] = []
+	# Faces lit by their lightmap, by the element that owns them: one mesh
+	# each, so the element's place in its atlas can ride on the instance.
+	var lit := {}
 	for face: Dictionary in faces:
 		var points: Array[Vector3] = []
 		for raw: Array in face["vertices"]:
@@ -846,7 +856,18 @@ func _build_bsp(faces: Array) -> StaticBody3D:
 		# The original's mark for a face it never draws. It still blocks, so it
 		# joins the collision and not the mesh.
 		var tool: SurfaceTool = null
-		if material_name != BSP_UNDRAWN_MATERIAL:
+		var shadow_uvs: Array = face.get("lightmap_uvs", [])
+		if material_name != BSP_UNDRAWN_MATERIAL and lightmaps != null and face.has("lightmap"):
+			var group: Dictionary = lit.get_or_add(JSON.stringify(face["lightmap"]),
+					{lightmap = face["lightmap"], tools = {}, entries = {}, order = []})
+			if not group.tools.has(material_name):
+				var made := SurfaceTool.new()
+				made.begin(Mesh.PRIMITIVE_TRIANGLES)
+				group.tools[material_name] = made
+				group.entries[material_name] = face
+				group.order.append(material_name)
+			tool = group.tools[material_name]
+		elif material_name != BSP_UNDRAWN_MATERIAL:
 			if not tools.has(material_name):
 				var made := SurfaceTool.new()
 				made.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -864,6 +885,8 @@ func _build_bsp(faces: Array) -> StaticBody3D:
 					tool.set_normal(normal)
 					if k < uvs.size():
 						tool.set_uv(uvs[k])
+					if k < shadow_uvs.size():
+						tool.set_uv2(Vector2(shadow_uvs[k][0], shadow_uvs[k][1]))
 					tool.add_vertex(points[k])
 	if triangles.is_empty():
 		return body
@@ -888,10 +911,42 @@ func _build_bsp(faces: Array) -> StaticBody3D:
 		instance.name = "Mesh"
 		instance.mesh = mesh
 		body.add_child(instance)
+	var lit_names := Common.NameAllocator.new()
+	for key: String in lit:
+		var lit_mesh := _bsp_lightmapped(lit[key])
+		if lit_mesh != null:
+			lit_mesh.name = lit_names.take("Lightmapped")
+			body.add_child(lit_mesh)
 	var shape := ConcavePolygonShape3D.new()
 	shape.set_faces(triangles)
 	_add_shape(body, shape, "Collision")
 	return body
+
+
+## One element of the BSP drawn with its lightmap. Tangents from the faces'
+## own texture coordinates: the BSP carries none, and only the lightmap's
+## specular term reads them.
+func _bsp_lightmapped(group: Dictionary) -> MeshInstance3D:
+	var textures: Array = lightmaps.textures_of(group.lightmap)
+	if textures.is_empty():
+		return null
+	var mesh: ArrayMesh = null
+	for material_name: String in group.order:
+		var tool: SurfaceTool = group.tools[material_name]
+		tool.generate_tangents()
+		mesh = tool.commit(mesh)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	for i in group.order.size():
+		var entry: Dictionary = group.entries[group.order[i]]
+		mesh.surface_set_name(i, group.order[i])
+		var material: Material = library.lightmap_material(entry, textures) if library != null else null
+		if material == null and library != null:
+			material = library.override_material(entry)
+		mesh.surface_set_material(i, material)
+	lightmaps.set_parameters(instance, group.lightmap)
+	lightmaps.counts.texture += 1
+	return instance
 
 
 func _build_lights(lights: Array) -> Node3D:

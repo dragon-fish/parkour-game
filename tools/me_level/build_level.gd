@@ -14,6 +14,7 @@ const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const GeometryBuilder := preload("res://tools/me_level/geometry_builder.gd")
 const ShellBuilder := preload("res://tools/me_level/shell_builder.gd")
 const MeParticles := preload("res://tools/me_level/me_particles.gd")
+const MeLightmaps := preload("res://tools/me_level/me_lightmaps.gd")
 const SectionLoaderScript := preload("res://scripts/level/section_loader.gd")
 
 
@@ -26,6 +27,8 @@ func _initialize() -> void:
 	var ok := _build(args[0], args.has("--rebuild-interactions"))
 	if _particles != null and not _particles.counts.is_empty():
 		print("[me_level] particles: ", _particles.counts)
+	if _lightmaps != null:
+		print("[me_level] lightmaps: ", _lightmaps.counts)
 	quit(0 if ok else 1)
 
 
@@ -63,6 +66,10 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 		_library.normal_scale = float(_look[NORMAL_SCALE_DIAL])
 	if not _library.build(meshes, bakes):
 		return false
+	# The chapter's atlases sit beside its geometry: the mesh library is shared
+	# by every chapter, the baked light is not.
+	_lightmaps = MeLightmaps.new(dir.path_join("lightmaps"),
+			Common.LEVEL_DIR.path_join(str(config["id"]) + "_lightmaps"), _library)
 	# Optional: an extract made before emitters were read has none.
 	var particles_path := dir.path_join("particles.json")
 	_particles = MeParticles.new(Common.read_json(particles_path) if FileAccess.file_exists(particles_path) else {})
@@ -95,6 +102,7 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 ## See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
 var _library = null
 var _particles = null
+var _lightmaps = null
 var _look := {}
 ## `look` key for MeshLibrary.baker_tint_strength.
 const BAKER_TINT_DIAL := "baker_tint_strength"
@@ -106,6 +114,7 @@ func _geometry_builder():
 	var builder := GeometryBuilder.new()
 	builder.library = _library
 	builder.particles = _particles
+	builder.lightmaps = _lightmaps
 	builder.look_dials = _look
 	return builder
 
