@@ -159,7 +159,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			rest.visible = instance.visible
 			_apply_overrides(rest, placement)
 		if placement.has("runner_vision"):
-			node.add_child(_runner_vision_target(placement, mesh))
+			node.add_child(_runner_vision_target(placement, mesh, baked))
 		# Not drawn past VISIBLE_RANGE_PER_METRE its own size: 13,000 placements
 		# drew the whole chapter from inside a corridor.
 		var extent: float = (Common.transform_of(placement).basis * mesh.get_aabb().size).abs().length()
@@ -319,8 +319,10 @@ func _fall_height_volumes(manifest: Dictionary) -> Node3D:
 ## What the original marks for Runner Vision, as the node a level of our own
 ## would place by hand (scripts/level/runner_vision_target.gd). Its distances
 ## and delays are the level designer's, and so is the colour, which is the
-## material's own LOI_Color rather than one red for everything.
-func _runner_vision_target(placement: Dictionary, mesh: ArrayMesh) -> Node3D:
+## material's own LOI_Color rather than one red for everything. A baked
+## placement takes the paint in its lightmap material, as the original's
+## materials do; anything else gets the target's overlay.
+func _runner_vision_target(placement: Dictionary, mesh: ArrayMesh, baked: bool) -> Node3D:
 	var settings: Dictionary = placement["runner_vision"]
 	var target := Node3D.new()
 	target.set_script(RUNNER_VISION_SCRIPT)
@@ -329,6 +331,7 @@ func _runner_vision_target(placement: Dictionary, mesh: ArrayMesh) -> Node3D:
 	target.set("flat_distance", bool(settings["flat_distance"]))
 	target.set("proximity_delay", float(settings["proximity_delay"]))
 	target.set("min_duration", float(settings["min_duration"]))
+	target.set("paint_in_material", baked)
 	if mesh.has_meta("loi_color"):
 		target.set("paint", mesh.get_meta("loi_color"))
 	return target

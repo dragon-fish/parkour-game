@@ -200,3 +200,40 @@ func test_the_tutorials_baked_world_takes_only_the_shadow_light() -> void:
 		assert_eq((node as GeometryInstance3D).layers & Common.CHARACTER_SHADOW_LAYER, 0,
 				"%s casts the character's shadow" % node.name)
 	root.free()
+
+
+## Runner Vision on a baked surface is painted by the lightmap shader itself.
+## An overlay there is lit by nothing but the negative shadow light, and its
+## instance uniforms take the lightmap's slots (me_lightmap.gdshaderinc).
+func test_the_tutorials_runner_vision_paints_its_baked_surfaces_in_their_lightmap() -> void:
+	var source := FileAccess.get_file_as_string("res://tools/me_level/me_lightmap.gdshaderinc")
+	assert_true(source.contains("instance uniform float strength") and source.contains("instance uniform vec3 paint"),
+			"the lightmap shader does not take the paint RunnerVisionTarget writes")
+	if not ResourceLoader.exists(TUTORIAL_GEOMETRY):
+		pass_test("no tutorial geometry on this machine")
+		return
+	var root: Node = (load(TUTORIAL_GEOMETRY) as PackedScene).instantiate()
+	var lit := _lightmapped(root)
+	var checked := 0
+	var bad: Array[String] = []
+	for node in root.find_children("*", "Node3D", true, false):
+		if not node is RunnerVisionTarget:
+			continue
+		var target := node as RunnerVisionTarget
+		target._collect()
+		var placed := {}
+		for mesh in target._painted:
+			placed[mesh] = mesh.get_instance_shader_parameter(&"lightmap_uv_scale_bias")
+		target._apply(1.0)
+		for mesh in target._painted:
+			if not lit.has(mesh):
+				continue
+			checked += 1
+			if not target.paint_in_material or mesh.material_overlay != null:
+				bad.append("%s: overlay" % mesh.get_parent().name)
+			elif mesh.get_instance_shader_parameter(&"lightmap_uv_scale_bias") != placed[mesh]:
+				bad.append("%s: lost its place in the atlas" % mesh.get_parent().name)
+	# The tutorial tags 94 objects, most of them baked.
+	assert_gt(checked, 50, "too few baked Runner Vision surfaces to say anything")
+	assert_eq(bad, [] as Array[String], "baked Runner Vision surfaces painted by an overlay")
+	root.free()

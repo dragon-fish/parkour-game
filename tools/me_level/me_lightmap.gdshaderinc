@@ -67,6 +67,24 @@ instance uniform vec3 lightmap_scale_2 = vec3(1.0);
 // Where the placement's run of vertex samples starts, in vertices.
 instance uniform int lightmap_vertex_offset = 0;
 
+// Runner Vision, as the original paints it: in the surface's own material
+// ([ME:CONFIRMED 14 §14.3] LOI_Color and LOI_Strength are material
+// parameters), so the red is lit by the same bake and darkened by the same
+// shadow as the rest of the surface. RunnerVisionTarget drives both by these
+// names (scripts/level/runner_vision_target.gd, paint_in_material).
+//
+// DO NOT draw the target's flat-coat overlay over this shader instead. An
+// instance uniform's slot is its INDEX in its own shader, not its name: the
+// overlay's strength and paint took slots 0 and 1, which are
+// lightmap_uv_scale_bias and lightmap_scale_0 here, so fading it in rescaled
+// the atlas lookup (the texture swam and striped) and tinted the bake red.
+// The overlay was lit, too, and nothing reaches this layer but the negative
+// shadow light: it drew near black, and lighter where the player's shadow fell.
+instance uniform float strength = 0.0;
+instance uniform vec3 paint = vec3(1.5, 0.0, 0.0);
+// [ME:CONFIRMED 14 §14.3] EmissiveColor = LOI_Strength * DiffuseColor * 0.1.
+const float RUNNER_VISION_GLOW = 0.1;
+
 // The shadow light's point light, as the original places it: (position, 1 /
 // Radius), world space; w = 0 when there is none (me_shadow_light.gd).
 global uniform vec4 me_shadow_light_sphere;
@@ -104,6 +122,9 @@ void fragment() {
 	if (use_albedo_texture) {
 		albedo *= texture(albedo_texture, uv);
 	}
+	// The paint replaces the diffuse and leaves the lighting alone, as the
+	// flat coat on a live-lit level does (shaders/runner_vision.gdshader).
+	albedo.rgb = mix(albedo.rgb, paint, strength);
 	vec3 n = vec3(0.0, 0.0, 1.0);
 	if (use_normal_texture) {
 		vec2 xy = (texture(normal_texture, uv).xy * 2.0 - 1.0) * normal_scale;
@@ -135,7 +156,7 @@ void fragment() {
 			shine = (lm0 * s.x + lm1 * s.y + lm2 * s.z) * specular;
 		}
 	}
-	vec3 color = albedo.rgb * light + shine;
+	vec3 color = albedo.rgb * light + shine + paint * (strength * RUNNER_VISION_GLOW);
 	if (use_emissive_texture) {
 		color += texture(emissive_texture, uv).rgb;
 	}
@@ -167,7 +188,7 @@ void fragment() {
 // is (1 - ModulateColor). Att comes from shadow_falloff; ATTENUATION is Lit.
 void light() {
 	if (LIGHT_IS_DIRECTIONAL && LIGHT_COLOR.r + LIGHT_COLOR.g + LIGHT_COLOR.b < 0.0) {
-		vec3 strength = min(-LIGHT_COLOR / PI, vec3(1.0));
-		DIFFUSE_LIGHT -= strength * shadow_falloff * (1.0 - ATTENUATION * ATTENUATION);
+		vec3 darkening = min(-LIGHT_COLOR / PI, vec3(1.0));
+		DIFFUSE_LIGHT -= darkening * shadow_falloff * (1.0 - ATTENUATION * ATTENUATION);
 	}
 }
