@@ -328,8 +328,14 @@ textures their materials sample baked like any material's. The builder
   is its own node over its own distance band. `ParticleLODBias` is 0 at every
   compat level. The component's cooked `LODLevel` is editor state (10 on a
   five-LOD template) and is not read.
-- **`PhysXOnly` is left out**: PX_* versions of the vents for a PhysX card,
-  standing where the ordinary emitters do.
+- **The level is the PhysX-enhanced one.** `GameInfo.CheckRelevance` shuts
+  down a `bPhysXMutatable` actor in the `PhysXOnly` group when PhysX is off and
+  one in `PhysXRemove` when it is on; the extract keeps what a PhysX game
+  plays, because the reference shots are of one. The PhysXOnly emitters are
+  PX_* vents standing over the ordinary ones, and they are most of what a roof's
+  smoke looks like there. A PhysX LOD's `type_data.fluid` is its
+  PhysXParticleSystem: `acceleration` (ExternalAcceleration plus the scene's
+  -800 uu/s^2 gravity), `damping`, and the rest as `props`.
 - **Static arrays** (`MirrorFlags[3]`) come back element by element; a struct
   that is natively serialised (Guid, Matrix) is carried raw, never parsed.
 

@@ -157,9 +157,11 @@ class EmitterTests(unittest.TestCase):
         exports = [('PersistentLevel', 'Level', 0)]
         table = {}
         for k, group in enumerate(groups):
+            group, mutatable = group if isinstance(group, tuple) else (group, False)
             actor = 2 + 2 * k
             exports += [('Emitter_%d' % k, 'Emitter', 1), ('ParticleSystemComponent_%d' % k, 'ParticleSystemComponent', 0)]
-            table[actor] = {'Location': (100.0, 200.0, 300.0), 'Rotation': (0, 16384, 0), 'Group': group}
+            table[actor] = {'Location': (100.0, 200.0, 300.0), 'Rotation': (0, 16384, 0), 'Group': group,
+                            'bPhysXMutatable': mutatable}
             table[actor + 1] = {'Template': 'stand-in'}
         reader = fake_reader(exports)
         for k in range(len(groups)):
@@ -182,10 +184,32 @@ class EmitterTests(unittest.TestCase):
         self.assertAlmostEqual(out[0]['basis'][0][2], 1.0, places=5)
         self.assertEqual(report['counts']['emitters'], 1)
 
-    def test_the_physx_only_group_is_left_out(self):
-        out, report = self.collect([P.PHYSX_ONLY_GROUP, None])
-        self.assertEqual(len(out), 1)
-        self.assertEqual(report['counts']['emitters_physx_only'], 1)
+    def test_the_physx_enhanced_game_keeps_physx_only_and_drops_physx_remove(self):
+        out, report = self.collect([('PhysXOnly', True), ('PhysXRemove', True), (None, True), ('PhysXRemove', False)])
+        self.assertEqual([e['group'] for e in out], ['PhysXOnly', None, 'PhysXRemove'],
+                         'only a bPhysXMutatable actor is judged by its group')
+        self.assertEqual(report['counts']['emitters_physx_removed'], 1)
+
+    def test_without_physx_the_physx_only_group_goes(self):
+        self.assertFalse(P.physx_relevant({'bPhysXMutatable': True, 'Group': 'PhysXOnly'}, enhanced=False))
+        self.assertTrue(P.physx_relevant({'bPhysXMutatable': True, 'Group': 'PhysXRemove'}, enhanced=False))
+
+
+class FluidTests(unittest.TestCase):
+    def fluid(self, props):
+        reader = fake_reader([('VentSmoke', 'PhysXParticleSystem', 0)])
+        a, b = patched({1: props})
+        with a, b:
+            return P.physx_fluid(None, P.Ref(reader, 1))
+
+    def test_the_fluid_feels_its_external_acceleration_and_the_scenes_gravity(self):
+        fluid = self.fluid({'Damping': 0.2, 'ExternalAcceleration': (0.0, 0.0, 810.0)})
+        self.assertEqual(fluid['acceleration'], [0.0, 0.1, 0.0], '810 up against 800 down, in Godot metres')
+        self.assertEqual(fluid['damping'], 0.2)
+
+    def test_bdisablegravity_leaves_the_external_acceleration_alone(self):
+        fluid = self.fluid({'ExternalAcceleration': (0.0, 0.0, 810.0), 'bDisableGravity': True})
+        self.assertEqual(fluid['acceleration'], [0.0, 8.1, 0.0])
 
 
 if __name__ == '__main__':

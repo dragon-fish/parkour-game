@@ -24,10 +24,22 @@ import materials as material_bake
 import packages as pk
 
 EMITTER_CLASSES = ('Emitter',)
-# [ME:INFERRED] drawn only with hardware PhysX: the group's name, and what is in
-# it -- PX_* templates, PhysX versions of the vents. In the tutorial each of
-# them stands where an ordinary VentSmoke emitter outside the group does.
-PHYSX_ONLY_GROUP = 'PhysXOnly'
+# [ME:CONFIRMED Engine.u GameInfo.CheckRelevance] an actor with bPhysXMutatable
+# is shut down before play by its Group: when the game is not PhysX-enhanced, one
+# whose group name is a substring of "PHYSXONLY"; when it is, one whose group
+# name is a substring of "PHYSXREMOVE". The extract is the PhysX-enhanced level,
+# which is what the reference shots show: the tutorial's rooftop AC billows are
+# PX_Smoke_VentSmoke_03_Multiple, a PhysXOnly emitter standing over an ordinary
+# VentSmoke_01_Big that is faint by design. DO NOT drop the PhysXOnly group
+# again: without it every such roof reads as thin wisps where the original has
+# a dense white mass.
+PHYSX_ENHANCED = True
+# [ME:CONFIRMED TdGame/Config/DefaultGame.ini] DefaultGravityZ -800 uu/s^2,
+# RBPhysicsGravityScaling 1.0. [ME:INFERRED] that is the PhysX scene's gravity
+# and a fluid feels it unless bDisableGravity: the vents' ExternalAcceleration
+# of 810 uu/s^2 up only makes sense against it (net 10: smoke that keeps the
+# velocity it was spawned with, neither falling nor climbing on its own).
+PHYSX_GRAVITY_Z = -800.0
 # Samples per curve over a particle's life, both ends included.
 CURVE_SAMPLES = 33
 
@@ -657,6 +669,12 @@ class Templates:
             value = props.get(key)
             if isinstance(value, Ref):
                 out[field] = module(self.packages, value)
+        type_data = props.get('TypeDataModule')
+        if out.get('type_data', {}).get('class') == 'TypeDataPhysX':
+            # module() names the fluid; its values are wanted here.
+            fluid_ref = object_props(self.packages, *resolve(self.packages, type_data.reader, type_data.index)) \
+                .get('PhysXParSys')
+            out['type_data']['fluid'] = physx_fluid(self.packages, fluid_ref)
         out['modules'] = [module(self.packages, m) for m in props.get('Modules') or [] if m is not None]
         # module() names the material; the reference itself is wanted here.
         required = props.get('RequiredModule')
@@ -670,13 +688,46 @@ class Templates:
         return out
 
 
+def physx_fluid(packages, ref):
+    """The PhysXParticleSystem a PhysX sprite emitter simulates in: what moves
+    its particles once spawned, in Godot metres and axes. `acceleration` is
+    the fluid's ExternalAcceleration plus the scene's gravity (none under
+    bDisableGravity), world space; `damping` is its velocity damping per
+    second. Collision and particle interaction are carried in `props` only.
+    None when there is no fluid."""
+    if not isinstance(ref, Ref):
+        return None
+    reader, index = resolve(packages, ref.reader, ref.index)
+    if reader is None:
+        raise ExtractError('%s: PhysX particle system %s not found' % (ref.reader.label, _reference_name(ref)))
+    props = object_props(packages, reader, index)
+    external = props.get('ExternalAcceleration') or (0.0, 0.0, 0.0)
+    gravity = 0.0 if props.get('bDisableGravity', False) else PHYSX_GRAVITY_Z
+    return {'name': _reference_name(ref), 'damping': float(props.get('Damping', 0.0)),
+            'acceleration': _godot_vector((external[0], external[1], external[2] + gravity)),
+            'props': _plain(props)}
+
+
+def physx_relevant(actor, enhanced=PHYSX_ENHANCED):
+    """GameInfo.CheckRelevance's PhysX half: whether the actor survives
+    PreBeginPlay. A group of None reads as "NONE", as string(Name) does."""
+    if not actor.get('bPhysXMutatable', False):
+        return True
+    group = str(actor.get('Group') or 'None').upper()
+    if not enhanced and group in 'PHYSXONLY':
+        return False
+    if enhanced and group in 'PHYSXREMOVE':
+        return False
+    return True
+
+
 # ------------------------------------------------------------ placements
 
 def collect_emitters(packages, mr, templates, report):
     """Every Emitter actor placed in this package's level, in Godot space.
 
-    Left out: the PhysXOnly group (see PHYSX_ONLY_GROUP) and an emitter with no
-    template. Counted in the report either way."""
+    Left out: an emitter the PhysX-enhanced game shuts down (see
+    PHYSX_ENHANCED) and one with no template. Counted in the report either way."""
     pkg = mr.pkg
     counts = report['counts']
     out = []
@@ -687,8 +738,8 @@ def collect_emitters(packages, mr, templates, report):
         if 'Location' not in actor:
             continue
         group = actor.get('Group')
-        if group == PHYSX_ONLY_GROUP:
-            counts['emitters_physx_only'] = counts.get('emitters_physx_only', 0) + 1
+        if not physx_relevant(actor):
+            counts['emitters_physx_removed'] = counts.get('emitters_physx_removed', 0) + 1
             continue
         component_ref = actor.get('ParticleSystemComponent')
         if not isinstance(component_ref, Ref):
