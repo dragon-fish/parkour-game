@@ -331,6 +331,14 @@ sampled at the nodes' own `ShadowTexCoord`s.
   back. The specular term needs the frame too: `static_mesh.godot_tangent()`
   turns the binormal sign round for the axis map, which is a reflection.
 
+**The grade is the original's tone mapping, fed as the game feeds it.**
+`environment.tone_map()` resolves what the pass receives (`_local/me-re/findings/TM1.md`):
+a settings block over the PostProcessSettings struct defaults, the PC modifier
+added on (Ms one less), the curves as their 16 stored Ms/Bs segments --
+ControlPoints are an editor's, never read at runtime. A PostProcessVolume
+REPLACES the world's settings inside its brush: the tutorial's corridor is one,
+with its own exposure limits and an identity curve.
+
 ## Particle emitters: the rooftop vapour
 
 `particles.py` reads every placed `Emitter` actor (template, Location,
