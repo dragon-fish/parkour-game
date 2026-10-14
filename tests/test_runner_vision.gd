@@ -92,3 +92,13 @@ func test_a_target_over_nothing_says_so() -> void:
 	_root.add_child(orphan)
 	assert_gt(orphan._get_configuration_warnings().size(), 0,
 		"a target painting nothing gave no warning")
+
+
+func test_a_material_that_takes_the_paint_gets_no_overlay() -> void:
+	var target := _target()
+	target.paint_in_material = true
+	var mesh := target.get_parent() as MeshInstance3D
+	target.advance(1.0, Vector3.ZERO)
+	assert_null(mesh.material_overlay, "an overlay drawn over a material that paints itself")
+	assert_gt(float(mesh.get_instance_shader_parameter(&"strength")), 0.0,
+		"the material was not handed the strength")

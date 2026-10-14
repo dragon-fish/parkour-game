@@ -64,6 +64,15 @@ const GROUP := "runner_vision"
 		overlay_material = value
 		_painted.clear()
 		_apply(editor_preview if Engine.is_editor_hint() else _strength)
+## The meshes' own materials take the paint, as the original's do: they declare
+## `instance uniform float strength` and `instance uniform vec3 paint`, and no
+## overlay is drawn. What an extracted level's baked surfaces need
+## (tools/me_level/me_lightmap.gdshaderinc): an overlay there is lit by nothing
+## and its instance uniforms land in the lightmap's slots.
+@export var paint_in_material: bool = false:
+	set(value):
+		paint_in_material = value
+		_apply(editor_preview if Engine.is_editor_hint() else _strength)
 
 @export_group("Fade")
 ## [ME:CONFIRMED] DefaultLOI.ini: FadeInSpeed 1.0, FadeOutSpeed 4.0. SLOW IN,
@@ -143,7 +152,10 @@ func _apply(strength: float) -> void:
 			continue
 		# Assigned once and shared: the overlay is one material for the whole
 		# level, and the strength rides on the instance.
-		if overlay_material != null:
+		if paint_in_material:
+			if _is_built_in(node.material_overlay):
+				node.material_overlay = null
+		elif overlay_material != null:
 			if node.material_overlay != overlay_material:
 				node.material_overlay = overlay_material
 		elif not _is_built_in(node.material_overlay):
