@@ -186,3 +186,14 @@ func test_a_sprite_undoes_the_levels_exposure() -> void:
 	autofree(root)
 	var sprite := (root.get_child(0).get_child(0) as GPUParticles3D).material_override as ShaderMaterial
 	assert_almost_eq(float(sprite.get_shader_parameter("exposure_compensation")), 1.0 / 0.34, 0.001)
+
+
+func test_a_term_without_a_texture_is_not_a_sample_of_the_other_terms_texture() -> void:
+	# M_PX_VentSmoke_01: brightness is the particle's colour alone, opacity a
+	# texture channel times the particle's alpha.
+	var lod := _lod()
+	lod["material"]["emissive"] = {"factors": [{"kind": "particle_color", "channels": "RGB"}]}
+	var params := MeParticles.describe(lod, 0.0)
+	var sprite := MeParticles.sprite_material(params.material, params, null)
+	assert_false(sprite.get_shader_parameter("emissive_textured"))
+	assert_true(sprite.get_shader_parameter("opacity_textured"))

@@ -19,13 +19,16 @@ uniform sampler2D sheet : source_color, filter_linear_mipmap, repeat_disable;
 uniform vec2 sub_images = vec2(1.0, 1.0);
 uniform bool blend_sub_images = false;
 // Brightness: the texture channel it takes (a mask dotted with the sample),
-// or the sample's RGB when emissive_rgb is set; times the particle's colour
-// when emissive_particle_color is set; times emissive_scale.
+// or the sample's RGB when emissive_rgb is set, or 1 when the term has no
+// texture; times the particle's colour when emissive_particle_color is set;
+// times emissive_scale.
+uniform bool emissive_textured = true;
 uniform vec4 emissive_mask = vec4(0.0, 1.0, 0.0, 0.0);
 uniform bool emissive_rgb = false;
 uniform bool emissive_particle_color = true;
 uniform float emissive_scale = 1.0;
 // Opacity, the same way, with the particle's alpha.
+uniform bool opacity_textured = true;
 uniform vec4 opacity_mask = vec4(0.0, 0.0, 0.0, 1.0);
 uniform bool opacity_particle_alpha = true;
 uniform float opacity_scale = 1.0;
@@ -75,12 +78,12 @@ void vertex() {
 
 void fragment() {
 	vec4 texel = mix(texture(sheet, uv_a), texture(sheet, uv_b), sub_blend);
-	vec3 brightness = emissive_rgb ? texel.rgb : vec3(dot(texel, emissive_mask));
+	vec3 brightness = !emissive_textured ? vec3(1.0) : (emissive_rgb ? texel.rgb : vec3(dot(texel, emissive_mask)));
 	if (emissive_particle_color) {
 		brightness *= COLOR.rgb;
 	}
 	ALBEDO = brightness * emissive_scale * exposure_compensation;
-	float opacity = dot(texel, opacity_mask) * opacity_scale;
+	float opacity = (opacity_textured ? dot(texel, opacity_mask) : 1.0) * opacity_scale;
 	if (opacity_particle_alpha) {
 		opacity *= COLOR.a;
 	}

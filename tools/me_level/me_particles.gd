@@ -31,7 +31,7 @@ const BUILT_FAMILIES: Array[String] = ["PS_FX_LevelFX_Smoke_VentSmoke_"]
 const MODULES: Array[String] = ["Lifetime", "Size", "Velocity", "Rotation", "SizeMultiplyLife",
 		"ColorOverLife", "AccelerationOverLifetime", "SubUV", "Location"]
 ## Bumped when the mapping changes, so every saved material is rebuilt.
-const FORMAT := 1
+const FORMAT := 2
 const LIBRARY := Common.LIBRARY_DIR + "/particles"
 ## Points a curve is rebuilt from, and the width of the texture it bakes to.
 const CURVE_TEXTURE_WIDTH := 64
@@ -406,11 +406,13 @@ static func sprite_material(material: Dictionary, params: Dictionary, sheet: Tex
 	out.set_shader_parameter("sub_images", params.sub_images)
 	out.set_shader_parameter("blend_sub_images", params.blend_sub_images)
 	var emissive := _factors(material.get("emissive", {}))
+	out.set_shader_parameter("emissive_textured", emissive.textured)
 	out.set_shader_parameter("emissive_mask", emissive.mask)
 	out.set_shader_parameter("emissive_rgb", emissive.rgb)
 	out.set_shader_parameter("emissive_particle_color", emissive.particle)
 	out.set_shader_parameter("emissive_scale", emissive.scale)
 	var opacity := _factors(material.get("opacity", {}))
+	out.set_shader_parameter("opacity_textured", opacity.textured)
 	out.set_shader_parameter("opacity_mask", opacity.mask)
 	out.set_shader_parameter("opacity_particle_alpha", opacity.particle)
 	out.set_shader_parameter("opacity_scale", opacity.scale)
@@ -429,12 +431,14 @@ static func depth_fade_m(fade: Dictionary) -> float:
 	return maxf((1.0 - float(fade.get("bias", 0.0))) * float(fade.get("bias_scale", 1.0)), 0.0) / 100.0
 
 
-## A product of factors as mask, rgb, particle and scale: the one texture
-## channel it takes (or the texture's RGB), whether the particle's colour is in
-## it, and every constant multiplied together.
+## A product of factors as textured, mask, rgb, particle and scale: whether a
+## texture is in it at all, the one channel it takes (or the texture's RGB),
+## whether the particle's colour is in it, and every constant multiplied
+## together. DO NOT stand a missing texture in with a mask: the shader samples
+## the sheet the OTHER term reads, and M_PX_VentSmoke_01's brightness (the
+## particle's colour alone) came out as the mean of its opacity texture.
 static func _factors(term: Dictionary) -> Dictionary:
-	var out := {mask = Vector4.ZERO, rgb = false, particle = false, scale = 1.0}
-	var textured := false
+	var out := {textured = false, mask = Vector4.ZERO, rgb = false, particle = false, scale = 1.0}
 	for factor: Dictionary in term.get("factors", []):
 		match str(factor["kind"]):
 			"particle_color":
@@ -442,7 +446,7 @@ static func _factors(term: Dictionary) -> Dictionary:
 			"constant":
 				out.scale *= float(factor["value"])
 			"texture":
-				textured = true
+				out.textured = true
 				var channels := str(factor["channels"])
 				if channels.length() == 1:
 					var mask := Vector4.ZERO
@@ -450,9 +454,6 @@ static func _factors(term: Dictionary) -> Dictionary:
 					out.mask = mask
 				else:
 					out.rgb = true
-	if not textured:
-		# No texture: the factors alone, as a sample of white.
-		out.mask = Vector4(0.25, 0.25, 0.25, 0.25)
 	return out
 
 
