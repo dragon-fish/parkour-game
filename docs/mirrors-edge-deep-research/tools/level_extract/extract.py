@@ -1018,7 +1018,8 @@ def main(config_path):
     if look:
         world_modifier = look.pop('_modifier', None) or environment.settings_block(None, None)
         look['volumes'] = [v for name in packages.names
-                           for v in environment.post_process_volumes(packages, packages.reader(name), world_modifier)]
+                           for v in environment.post_process_volumes(
+                               packages, packages.reader(name), world_modifier, report)]
         report['post_process_volumes'] = len(look['volumes'])
     report['environment'] = look.get('package') if look else None
     report['sun'] = '%s.%s' % (look['sun']['package'], look['sun']['name']) if look and look.get('sun') else None

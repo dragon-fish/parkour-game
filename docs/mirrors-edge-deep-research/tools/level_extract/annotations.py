@@ -118,8 +118,8 @@ def _volume_reach(annotation):
     return round(furthest, 3)
 
 
-def _raw_entry(mr, idx, name):
-    chain, _ = mr.chain_of(idx)
+def _raw_entry(mr, idx, name, widest=False):
+    chain, _ = mr.chain_of(idx, widest)
     for (n, typ, extra, q, sz, _arr) in chain:
         if n == name:
             return typ, extra, q, sz
@@ -185,8 +185,13 @@ def built(hull):
 
 def brush_hulls(mr, component_idx):
     """KConvexElem hulls of a BrushComponent's BrushAggGeom (the same
-    FKAggregateGeom hulls.py reads). Local, unscaled: the basis carries both."""
-    entry = _raw_entry(mr, component_idx, 'BrushAggGeom')
+    FKAggregateGeom hulls.py reads). Local, unscaled: the basis carries both.
+
+    The WIDEST chain: a component with nothing stored before its BrushAggGeom
+    has its first ConvexElem's chain (seven tags) start where the calibration
+    looks, and that chain outnumbers the component's own three. Read by tag
+    count, the brush came back without its BrushAggGeom, i.e. without a brush."""
+    entry = _raw_entry(mr, component_idx, 'BrushAggGeom', widest=True)
     if not entry:
         return []
     _, _, q, sz = entry

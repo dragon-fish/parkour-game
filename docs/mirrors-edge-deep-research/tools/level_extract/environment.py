@@ -152,11 +152,20 @@ def _world_settings(mr, idx):
             settings_block(mr, by_name.get('DefaultPostProcessSettingsModifierPC')))
 
 
-def post_process_volumes(packages, mr, world_modifier):
+def post_process_volumes(packages, mr, world_modifier, report=None):
     """Every PostProcessVolume placed in this package: where it is, its
     priority, and the tone mapping inside it. Each hull is carried as its
     outward face planes [nx, ny, nz, d] in world space, a point being inside
-    when n . p <= d for every one."""
+    when n . p <= d for every one.
+
+    A volume with no shape at all is left out, and listed in
+    report['post_process_volumes_shapeless']. [ME:DERIVED TM1 0x00c15ee0,
+    N7 0x00f03fe0] a volume applies only when Encompasses(view), a point check
+    against its brush; one whose BrushComponent stores no Brush, no
+    BrushAggGeom and no cooked physics data (Mall_R1-R2_Lgts.PostProcessVolume_0,
+    Scraper_Heli_Lgts.PostProcessVolume_0/_1) has nothing a point can be inside,
+    so it never applies. A volume that names a Brush but yields no hull is a
+    misread, and still stops the extraction."""
     import annotations
     import packages as pk
     pkg = mr.pkg
@@ -164,8 +173,11 @@ def post_process_volumes(packages, mr, world_modifier):
     for i, e in enumerate(pkg.exports, 1):
         if pkg.class_of(e) != 'PostProcessVolume' or outer_class(pkg, e) != 'Level':
             continue
-        props, _ = pk.resolved_props(packages, mr, i)
-        tags, _ = mr.chain_of(i)
+        # The WIDEST chain: a volume's Settings struct holds more tags than the
+        # volume itself, so read by tag count a volume came back as its own
+        # settings, with no Location, no brush and no bEnabled.
+        props, _ = pk.resolved_props(packages, mr, i, widest=True)
+        tags, _ = mr.chain_of(i, widest=True)
         by_name = {t[0]: mt._value(mr, t) for t in tags}
         settings = settings_block(mr, by_name.get('Settings'))
         modifier = settings_block(mr, by_name.get('PostProcessSettingsModifierPC'))
@@ -177,12 +189,25 @@ def post_process_volumes(packages, mr, world_modifier):
                           if annotations.built(h)]
         annotations.place_brush(props, volume, '%s.%s' % (mr.label, e['name']))
         planes = [_planes(volume, h) for h in volume.pop('hull')]
+        if not planes and props.get('Brush') is None and not _stores_geometry(mr, component):
+            if report is not None:
+                report.setdefault('post_process_volumes_shapeless', []).append('%s.%s' % (mr.label, e['name']))
+            continue
         if not planes:
             raise ExtractError('%s.%s: a post process volume with no brush' % (mr.label, e['name']))
         out.append({'name': e['name'], 'package': mr.label, 'priority': float(props.get('Priority', 0.0)),
                     'enabled': props.get('bEnabled', True) is not False, 'planes': planes,
                     'tone_map': tone_map(settings, modifier, world_modifier, curves)})
     return out
+
+
+def _stores_geometry(mr, component):
+    """Whether a BrushComponent stores any shape of its own: a Brush or a
+    BrushAggGeom. Cooked physics data comes with the aggregate geometry."""
+    if not component:
+        return False
+    names = {t[0] for t in mr.chain_of(component, widest=True)[0]}
+    return bool(names & {'Brush', 'BrushAggGeom'})
 
 
 def _planes(volume, hull):

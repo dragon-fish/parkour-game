@@ -328,11 +328,11 @@ def import_path(pkg, index):
         return root, list(reversed(names))
 
 
-def resolved_props(packages, mr, idx, depth=0):
+def resolved_props(packages, mr, idx, depth=0, widest=False):
     """Properties of export #idx with its WHOLE archetype chain merged, crossing
     into shared packages. Prefab instances (PF_*_Arc) keep their StaticMesh on
     an archetype component that lives in a prefab package; reading only the
-    level package loses the mesh."""
+    level package loses the mesh. `widest` as MapReader.chain_of()."""
     if depth > 16:
         raise ExtractError('%s: archetype chain too deep at export %d' % (mr.label, idx))
     chain, cur = [], idx
@@ -348,13 +348,13 @@ def resolved_props(packages, mr, idx, depth=0):
         target = find_export(shared, path)
         if target is None:
             raise ExtractError('%s: archetype %s not found in %s' % (mr.label, '.'.join(path), root))
-        for key, value in resolved_props(packages, shared, target, depth + 1)[0].items():
+        for key, value in resolved_props(packages, shared, target, depth + 1, widest)[0].items():
             # Object references are indices into the package that wrote them.
             if isinstance(value, tuple) and len(value) == 2 and value[0] == 'obj' and value[1]:
                 value = ('ext', shared, value[1])
             merged[key] = value
     for i in reversed(chain):
-        props, _ = mr.props(i)
+        props, _ = mr.props(i, widest)
         if props:
             merged.update(props)
     return merged, mr

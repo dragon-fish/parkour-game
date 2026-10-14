@@ -68,10 +68,10 @@ class MapReader:
                 best, best_score = (pr, nat), score
         return best or ([], None)
 
-    def props(self, idx):
+    def props(self, idx, widest=False):
         """Self-calibrating property read of export #idx (1-based).
-        Returns (dict, native_start) or (None, None)."""
-        pr, nat = self.chain_of(idx)
+        Returns (dict, native_start) or (None, None). `widest` as chain_of()."""
+        pr, nat = self.chain_of(idx, widest)
         best = (pr, nat) if pr or nat is not None else None
         if best is None:
             return (None, None)
