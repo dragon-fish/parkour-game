@@ -17,6 +17,14 @@ extends RefCounted
 # larger particles: 75-100 uu up close, 225-250 past 12.5 m. Each LOD is its
 # own node over its own visibility range, so what the player sees from across
 # a roof is what the original drew there.
+#
+# PHYSX VENTS ARE BUILT TOO. The extract is the PhysX-enhanced level
+# (particles.py, PHYSX_ENHANCED), and a PX_* vent is most of a roof's smoke
+# there. Its LOD is an ordinary sprite emitter whose particles a PhysX fluid
+# moves once spawned: here that is the fluid's acceleration (its own plus the
+# scene's gravity), its damping and its motion limit, world space.
+# [ME:INFERRED] what the fluid also does -- collide with the roof, push
+# neighbours apart -- is left out; at a vent's spacing and speed neither shows.
 
 const Common := preload("res://tools/me_level/me_level_common.gd")
 const PROCESS_SHADER := preload("res://tools/me_level/me_particle_process.gdshader")
@@ -26,13 +34,20 @@ const SPRITE_SHADER := preload("res://tools/me_level/me_particle_sprite.gdshader
 ## and counted but not built until each family has been judged against the
 ## original: one that happens to use only the modules below could still read
 ## nothing like itself (a flock of birds is a sprite emitter too).
-const BUILT_FAMILIES: Array[String] = ["PS_FX_LevelFX_Smoke_VentSmoke_"]
+const BUILT_FAMILIES: Array[String] = ["PS_FX_LevelFX_Smoke_VentSmoke_", "PX_Smoke_VentSmoke_"]
 ## The modules a LOD may use. Any other enabled module and the LOD is not built.
 const MODULES: Array[String] = ["Lifetime", "Size", "Velocity", "Rotation", "SizeMultiplyLife",
 		"ColorOverLife", "AccelerationOverLifetime", "SubUV", "Location"]
 ## Bumped when the mapping changes, so every saved material is rebuilt.
 const FORMAT := 2
 const LIBRARY := Common.LIBRARY_DIR + "/particles"
+## The original's frame rate, at which a fluid's per-step motion limit becomes
+## a speed. [ME:CONFIRMED Engine/Config/BaseEngine.ini] MaxSmoothedFrameRate 62;
+## [ME:CONFIRMED Engine.u WorldInfo] the fluid compartment is not fixed-step and
+## takes one sub step, so it steps once a frame. VentSmoke's 1 uu a step is
+## 0.62 m/s: DO NOT drop the limit as a detail, it is what keeps the plume a
+## low billow over the unit instead of a column three metres high.
+const ORIGINAL_FRAME_RATE := 62.0
 ## Points a curve is rebuilt from, and the width of the texture it bakes to.
 const CURVE_TEXTURE_WIDTH := 64
 
@@ -127,8 +142,12 @@ func _count(what: String) -> void:
 static func describe(lod: Dictionary, warmup: float) -> Dictionary:
 	if not lod.get("enabled", true):
 		return {unsupported = "disabled"}
+	var fluid: Variant = null
 	if lod.has("type_data"):
-		return {unsupported = "type data %s" % lod["type_data"]["class"]}
+		var type_data: Dictionary = lod["type_data"]
+		if str(type_data["class"]) != "TypeDataPhysX" or not type_data.get("fluid") is Dictionary:
+			return {unsupported = "type data %s" % type_data["class"]}
+		fluid = type_data["fluid"]
 	var required: Dictionary = lod.get("required", {}).get("props", {})
 	var spawn: Dictionary = lod.get("spawn", {}).get("props", {})
 	var material: Variant = lod.get("material")
@@ -159,11 +178,19 @@ static func describe(lod: Dictionary, warmup: float) -> Dictionary:
 		size = [1.0, 1.0], rotation = [0.0, 0.0],
 		size_curve = {scale = 1.0}, color = {scale = Vector3.ONE}, alpha = {scale = 1.0},
 		accel = {scale = Vector3.ZERO}, sub_image = {scale = 0.0},
+		world_accel = Vector3.ZERO, damping = 0.0, max_speed = 0.0,
 		clamp_alpha = true,
 		sub_images = Vector2(maxi(int(required.get("SubImages_Horizontal", 1)), 1),
 				maxi(int(required.get("SubImages_Vertical", 1)), 1)),
 		blend_sub_images = false,
 	}
+	if fluid != null:
+		# [ME:INFERRED] PhysX simulates in its own scene, in the world:
+		# bUseLocalSpace does not carry a fluid's particles with the emitter.
+		params.local = false
+		params.world_accel = Common.v3(fluid.get("acceleration", [0.0, 0.0, 0.0]))
+		params.damping = float(fluid.get("damping", 0.0))
+		params.max_speed = float(fluid.get("max_motion", 0.0)) * ORIGINAL_FRAME_RATE
 	var interpolation := str(required.get("InterpolationMethod", "PSUVIM_None"))
 	for module: Dictionary in lod.get("modules", []):
 		if not module.get("enabled", true):
@@ -312,6 +339,7 @@ static func visibility_box(params: Dictionary) -> AABB:
 	var scale: Vector3 = params.accel.scale
 	for sample: Vector3 in params.accel.get("samples", [Vector3.ONE]):
 		accel = maxf(accel, (sample * scale).length())
+	accel += (params.world_accel as Vector3).length()
 	var size := maxf(absf(float(params.size[0])), absf(float(params.size[1])))
 	var grow := float(params.size_curve.scale)
 	for sample in params.size_curve.get("samples", [1.0]):
@@ -384,6 +412,9 @@ static func process_material(params: Dictionary) -> ShaderMaterial:
 	material.set_shader_parameter("color_scale", params.color.scale)
 	material.set_shader_parameter("alpha_scale", float(params.alpha.scale))
 	material.set_shader_parameter("accel_scale", params.accel.scale)
+	material.set_shader_parameter("world_accel", params.world_accel)
+	material.set_shader_parameter("damping", float(params.damping))
+	material.set_shader_parameter("max_speed", float(params.max_speed))
 	material.set_shader_parameter("sub_image_scale", float(params.sub_image.scale))
 	for channel in [["size_curve", params.size_curve], ["alpha_curve", params.alpha],
 			["sub_image_curve", params.sub_image]]:

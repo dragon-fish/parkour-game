@@ -40,6 +40,15 @@ uniform sampler2D color_curve : hint_default_white, repeat_disable, filter_linea
 uniform sampler2D alpha_curve : hint_default_white, repeat_disable, filter_linear;
 uniform vec3 accel_scale = vec3(0.0);
 uniform sampler2D accel_curve : hint_default_white, repeat_disable, filter_linear;
+// A PhysX LOD's fluid (me_particles.gd): an acceleration in the WORLD, which
+// is the simulation's space because such a LOD is never local, and a velocity
+// damping per second. [ME:INFERRED PhysX 2.8 NxFluidDesc.damping] taken as a
+// decay rate.
+uniform vec3 world_accel = vec3(0.0);
+uniform float damping = 0.0;
+// The fastest a fluid particle moves, metres a second (its motion limit per
+// step at the original's frame rate); 0 is no limit.
+uniform float max_speed = 0.0;
 uniform float sub_image_scale = 0.0;
 uniform sampler2D sub_image_curve : hint_default_white, repeat_disable, filter_linear;
 
@@ -122,7 +131,11 @@ void process() {
 		ACTIVE = false;
 	}
 	vec2 t = vec2(clamp(CUSTOM.y, 0.0, 1.0), 0.0);
-	VELOCITY += accel_scale * texture(accel_curve, t).rgb * DELTA;
+	VELOCITY += (accel_scale * texture(accel_curve, t).rgb + world_accel) * DELTA;
+	VELOCITY *= exp(-damping * DELTA);
+	if (max_speed > 0.0 && length(VELOCITY) > max_speed) {
+		VELOCITY = normalize(VELOCITY) * max_speed;
+	}
 	CUSTOM.z = sub_image_scale * texture(sub_image_curve, t).r;
 	float alpha = alpha_scale * texture(alpha_curve, t).r;
 	COLOR = vec4(color_scale * texture(color_curve, t).rgb, clamp_alpha ? clamp(alpha, 0.0, 1.0) : alpha);

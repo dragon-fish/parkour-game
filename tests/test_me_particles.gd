@@ -188,6 +188,26 @@ func test_a_sprite_undoes_the_levels_exposure() -> void:
 	assert_almost_eq(float(sprite.get_shader_parameter("exposure_compensation")), 1.0 / 0.34, 0.001)
 
 
+func test_a_physx_lod_is_moved_by_its_fluid_in_the_world() -> void:
+	var lod := _lod()
+	lod["required"]["props"]["bUseLocalSpace"] = true
+	lod["type_data"] = {"class": "TypeDataPhysX", "enabled": true, "props": {"PhysXParSys": "VentSmoke"},
+			"fluid": {"name": "VentSmoke", "damping": 0.2, "acceleration": [0.0, 0.1, 0.0], "max_motion": 0.01,
+				"props": {}}}
+	var params := MeParticles.describe(lod, 0.0)
+	assert_false(params.has("unsupported"), "the PhysX LOD was refused: %s" % params.get("unsupported"))
+	assert_false(params.local, "a fluid simulates in the world whatever bUseLocalSpace says")
+	var material := MeParticles.process_material(params)
+	assert_eq(material.get_shader_parameter("world_accel"), Vector3(0.0, 0.1, 0.0))
+	assert_almost_eq(float(material.get_shader_parameter("damping")), 0.2, 1e-6)
+	assert_almost_eq(float(material.get_shader_parameter("max_speed")), 0.01 * MeParticles.ORIGINAL_FRAME_RATE, 1e-6,
+			"the per-step motion limit is a speed at the original's frame rate")
+	var bare := _lod()
+	bare["type_data"] = {"class": "TypeDataPhysX", "enabled": true, "props": {}}
+	assert_true(str(MeParticles.describe(bare, 0.0).get("unsupported")).begins_with("type data"),
+			"a PhysX LOD with no fluid read was built as if nothing moved it")
+
+
 func test_a_term_without_a_texture_is_not_a_sample_of_the_other_terms_texture() -> void:
 	# M_PX_VentSmoke_01: brightness is the particle's colour alone, opacity a
 	# texture channel times the particle's alpha.
