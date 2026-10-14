@@ -2,15 +2,18 @@
 extends Node3D
 
 # Parent of an extracted level's lights. Each light keeps the original's baked
-# brightness in meta "me_brightness"; its energy is that times energy_scale.
+# brightness in meta "me_brightness"; its energy is that times energy_scale,
+# or modern_energy_scale under modern lighting.
 #
-# In a lightmapped level these light only what moves -- the player's body,
-# movers, rigid bodies -- the static world being drawn from its bake, and the
-# frame is exposed by the original's eye adaptation. A scale judged against
-# lit walls under the older fixed exposure is not judged for that: re-judge it
-# against the body beside a baked wall.
+# Under classic lighting (SettingsStore.LIGHTING_MODES) these light only what
+# moves -- the player's body, movers, rigid bodies -- the static world being
+# drawn from its bake, and the frame is exposed by the original's eye
+# adaptation. energy_scale was judged against lit walls under the older fixed
+# exposure, not for that: re-judge it against the body beside a baked wall
+# (modern_energy_scale's measurement says the bake's own units want about 1).
+# Under modern lighting they light the world too.
 #
-# A DIAL, NOT A CONVERSION. The original is baked with Beast and there is no
+# energy_scale IS A DIAL, NOT A CONVERSION. The original is baked with Beast and there is no
 # known mapping from its brightness to Godot energy. Judged against the
 # owner's screenshots of the original (.private/docs/me-reference-shots)
 # together with me_environment.gd's EXPOSURE: at exposure 1.0, 16 matched
