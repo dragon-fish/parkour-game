@@ -302,6 +302,35 @@ samples several coordinates, the first sample with an explicit coordinate
 decides: an unconnected sample is usually a tiling-1 variation mask, and taking
 its tiling turned the chain-link fence into one knot per panel.
 
+## Baked lighting: the original's lightmaps
+
+`lightmaps.py` reads the Beast bake the original draws its static world with,
+and the builder draws it the same way (`tools/me_level/me_lightmap.gdshaderinc`).
+A placed StaticMeshComponent ends in its LODData; LOD0's `FLightMapRef` is a
+texture lightmap (three coefficient atlases, a ScaleVector each, a coordinate
+scale and bias), a vertex lightmap (three FColors per vertex of the LOD) or
+none. A ModelComponent's elements each carry one for the BSP nodes they own,
+sampled at the nodes' own `ShadowTexCoord`s.
+
+- **The bias is x then y.** The vertex shader adds `ShadowCoordinateScaleBias.wz`,
+  which the engine fills so the result is (x, y). Read the other way, the
+  tutorial's allocations overlap 285 times; read this way, never
+  (`test_lightmaps.py`).
+- **The 4th texture is a placeholder.** Each ref carries four textures and four
+  scales; the fourth is the cooked-out simple lightmap, a 1x1 white.
+- **The coordinate set is the mesh's `LightMapCoordinateIndex`** (class default
+  0), not a guess from the spans. The library puts it in UV2 for every surface.
+- **The atlases are written, not decoded.** Each `LightMapTexture2D` becomes a
+  DDS around its own DXT1 blocks and mips. The 2x2 and 1x1 mips record 4x4,
+  the one block they take.
+- **A mover or a rigid body has none.** InterpActors and KActors carry no
+  LODData: the original lights them live (DynamicLightEnvironment), and so does
+  the level here. Static geometry is unshaded and takes no live light at all.
+- **Tangent space is the original's.** The directional weights need only the
+  material's tangent-space normal, so the baked normal map's green is flipped
+  back. The specular term needs the frame too: `static_mesh.godot_tangent()`
+  turns the binormal sign round for the axis map, which is a reflection.
+
 ## Particle emitters: the rooftop vapour
 
 `particles.py` reads every placed `Emitter` actor (template, Location,
