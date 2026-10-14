@@ -6,14 +6,33 @@ only characters (every LightingChannel off). Where the sun stands is recorded
 instead by the Mirror's Edge haze settings (HazeSunLocation), which is what the
 builder points its sun along.
 
-Post process in Mirror's Edge is its own: Scene_MidTones and per-channel tone
-curves (Curves.ControlPointsR/G/B, and A applied to all three), as (x, y)
-pairs. Curves.Ms/Bs are recorded as read; their meaning is not known.
+Post process in Mirror's Edge is its own. `tone_map` is what its tone mapping
+pass is fed, resolved as the original resolves it ([ME:CONFIRMED
+_local/me-re/findings/TM1.md]): the settings' Scene_* values and exposure
+limits over the PostProcessSettings struct defaults, the PC modifier added on,
+and the curves as their stored 16 linear segments Curves.Ms/Bs -- the runtime
+never reads ControlPoints. PostProcessVolumes replace the world's settings
+inside their brush (`post_process_volumes`).
 """
 import struct
 
-from common import UU, outer_class
+from common import UU, ExtractError, actor_scale, godot_basis, outer_class, point, ref_export
 import matinee as mt
+
+# [ME:CONFIRMED Engine/PostProcessVolume.uc] the PostProcessSettings struct's
+# defaults: what a settings block that stores nothing of a field runs with.
+TONE_DEFAULTS = {
+    'Scene_Shadows': (0.0, 0.0, 0.0), 'Scene_HighLights': (1.0, 1.0, 1.0), 'Scene_MidTones': (1.0, 1.0, 1.0),
+    'Scene_Desaturation': 0.0, 'Scene_ExposureManual': 1.0, 'Scene_ExposureSpeedUp': 3.5,
+    'Scene_ExposureSpeedDown': 4.5, 'Scene_ExposureHigh': 1.65, 'Scene_ExposureLow': 0.85,
+    'Scene_InterpolationDuration': 1.0,
+}
+# The fields a TdPostProcessModifier adds on; it holds 0 for each, and 1 for
+# every Ms, unless it stores otherwise.
+MODIFIED_FIELDS = ('Scene_Shadows', 'Scene_HighLights', 'Scene_MidTones', 'Scene_Desaturation',
+                   'Scene_ExposureManual', 'Scene_ExposureSpeedUp', 'Scene_ExposureSpeedDown',
+                   'Scene_ExposureHigh', 'Scene_ExposureLow')
+CURVE_SEGMENTS = 16
 
 
 def _decode(mr, value, depth=0):
@@ -53,6 +72,141 @@ def post_process(settings):
     return out
 
 
+def _tags(mr, value):
+    """The tags inside a struct value, or [] for anything else."""
+    if not (isinstance(value, tuple) and value and value[0] == 'struct'):
+        return []
+    _ok, tags, _ = mr._chain(value[2], value[2] + value[3])
+    return tags
+
+
+def settings_block(mr, value):
+    """What a PostProcessSettings (or TdPostProcessModifier) struct STORES:
+    {'fields': {name: value}, 'ms': {i: (r, g, b)}, 'bs': {i: (r, g, b)}}.
+    Ms and Bs are static arrays, one tag per stored element."""
+    out = {'fields': {}, 'ms': {}, 'bs': {}}
+    for tag in _tags(mr, value):
+        if tag[0] == 'Curves':
+            for element in _tags(mr, mt._value(mr, tag)):
+                if element[0] in ('Ms', 'Bs'):
+                    out[element[0].lower()][element[5]] = tuple(float(c) for c in mt._value(mr, element))
+        elif tag[0] in TONE_DEFAULTS or tag[0] == 'bEnableSceneEffect':
+            v = mt._value(mr, tag)
+            out['fields'][tag[0]] = tuple(float(c) for c in v) if isinstance(v, tuple) else v
+    return out
+
+
+def _add(a, b):
+    return tuple(x + y for x, y in zip(a, b)) if isinstance(a, tuple) else a + b
+
+
+def _is_zero(v):
+    return all(c == 0.0 for c in v) if isinstance(v, tuple) else v == 0.0
+
+
+def tone_map(settings, modifier, fallback_modifier=None, curve_modifier=None):
+    """The tone mapping pass's settings, resolved.
+
+    [ME:CONFIRMED TM1 0x00c0f820, 0x00e77870] every modified field is the
+    setting plus the modifier's; inside a volume a modifier field left at 0
+    takes the world's modifier instead (`fallback_modifier`). Ms = s.Ms +
+    m.Ms - 1 and Bs = s.Bs + m.Bs, with `curve_modifier` (the volume's own only
+    when it sets bOverrideSKUSpecificCurveModifier). [ME:CONFIRMED TM1
+    0x012d0420] bEnableSceneEffect off makes the grading the identity.
+    """
+    fields = dict(TONE_DEFAULTS)
+    fields.update({k: v for k, v in settings['fields'].items() if k in TONE_DEFAULTS})
+    zero = {k: (0.0, 0.0, 0.0) if isinstance(TONE_DEFAULTS[k], tuple) else 0.0 for k in MODIFIED_FIELDS}
+    for key in MODIFIED_FIELDS:
+        m = modifier['fields'].get(key, zero[key])
+        if fallback_modifier is not None and _is_zero(m):
+            m = fallback_modifier['fields'].get(key, zero[key])
+        fields[key] = _add(fields[key], m)
+    curves = curve_modifier or modifier
+    ms, bs = [], []
+    for i in range(CURVE_SEGMENTS):
+        ms.append([round(a + b - 1.0, 6) for a, b in zip(settings['ms'].get(i, (0.0, 0.0, 0.0)),
+                                                         curves['ms'].get(i, (1.0, 1.0, 1.0)))])
+        bs.append([round(a + b, 6) for a, b in zip(settings['bs'].get(i, (0.0, 0.0, 0.0)),
+                                                   curves['bs'].get(i, (0.0, 0.0, 0.0)))])
+    if settings['fields'].get('bEnableSceneEffect', True) is False:
+        fields.update({'Scene_Shadows': (0.0, 0.0, 0.0), 'Scene_HighLights': (1.0, 1.0, 1.0),
+                       'Scene_MidTones': (1.0, 1.0, 1.0), 'Scene_Desaturation': 0.0})
+
+    def r(v):
+        return [round(c, 6) for c in v] if isinstance(v, tuple) else round(float(v), 6)
+    return {'shadows': r(fields['Scene_Shadows']), 'highlights': r(fields['Scene_HighLights']),
+            'midtones': r(fields['Scene_MidTones']), 'desaturation': r(fields['Scene_Desaturation']),
+            'exposure_manual': r(fields['Scene_ExposureManual']),
+            'exposure_speed_up': r(fields['Scene_ExposureSpeedUp']),
+            'exposure_speed_down': r(fields['Scene_ExposureSpeedDown']),
+            'exposure_high': r(fields['Scene_ExposureHigh']), 'exposure_low': r(fields['Scene_ExposureLow']),
+            'interpolation_s': r(fields['Scene_InterpolationDuration']),
+            'curve_m': ms, 'curve_b': bs}
+
+
+def _world_settings(mr, idx):
+    tags, _ = mr.chain_of(idx)
+    by_name = {t[0]: mt._value(mr, t) for t in tags}
+    return (settings_block(mr, by_name.get('DefaultPostProcessSettings')),
+            settings_block(mr, by_name.get('DefaultPostProcessSettingsModifierPC')))
+
+
+def post_process_volumes(packages, mr, world_modifier):
+    """Every PostProcessVolume placed in this package: where it is, its
+    priority, and the tone mapping inside it. Each hull is carried as its
+    outward face planes [nx, ny, nz, d] in world space, a point being inside
+    when n . p <= d for every one."""
+    import annotations
+    import packages as pk
+    pkg = mr.pkg
+    out = []
+    for i, e in enumerate(pkg.exports, 1):
+        if pkg.class_of(e) != 'PostProcessVolume' or outer_class(pkg, e) != 'Level':
+            continue
+        props, _ = pk.resolved_props(packages, mr, i)
+        tags, _ = mr.chain_of(i)
+        by_name = {t[0]: mt._value(mr, t) for t in tags}
+        settings = settings_block(mr, by_name.get('Settings'))
+        modifier = settings_block(mr, by_name.get('PostProcessSettingsModifierPC'))
+        curves = modifier if props.get('bOverrideSKUSpecificCurveModifier') else world_modifier
+        volume = {'name': e['name'], 'package': mr.label, 'position': point(props.get('Location') or (0, 0, 0)),
+                  'basis': godot_basis(props.get('Rotation') or (0, 0, 0), actor_scale(props))}
+        component = ref_export(props.get('BrushComponent'))
+        volume['hull'] = [h for h in (annotations.inherited_hulls(packages, mr, component) if component else [])
+                          if annotations.built(h)]
+        annotations.place_brush(props, volume, '%s.%s' % (mr.label, e['name']))
+        planes = [_planes(volume, h) for h in volume.pop('hull')]
+        if not planes:
+            raise ExtractError('%s.%s: a post process volume with no brush' % (mr.label, e['name']))
+        out.append({'name': e['name'], 'package': mr.label, 'priority': float(props.get('Priority', 0.0)),
+                    'enabled': props.get('bEnabled', True) is not False, 'planes': planes,
+                    'tone_map': tone_map(settings, modifier, world_modifier, curves)})
+    return out
+
+
+def _planes(volume, hull):
+    """Outward planes of one convex hull, placed."""
+    basis, origin = volume['basis'], volume['position']
+    world = [[origin[k] + sum(basis[c][k] * v[c] for c in range(3)) for k in range(3)] for v in hull['vertices']]
+    centre = [sum(p[k] for p in world) / len(world) for k in range(3)]
+    t = hull['triangles']
+    planes = []
+    for a, b, c in zip(t[0::3], t[1::3], t[2::3]):
+        u = [world[b][k] - world[a][k] for k in range(3)]
+        w = [world[c][k] - world[a][k] for k in range(3)]
+        n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]]
+        length = sum(x * x for x in n) ** 0.5
+        if length < 1e-9:
+            continue
+        n = [x / length for x in n]
+        if sum(n[k] * (world[a][k] - centre[k]) for k in range(3)) < 0.0:
+            n = [-x for x in n]
+        planes.append([round(n[0], 6), round(n[1], 6), round(n[2], 6),
+                       round(sum(n[k] * world[a][k] for k in range(3)), 5)])
+    return planes
+
+
 def haze(settings):
     """The Mirror's Edge haze: a warm tint laid over distance, thickening by
     (distance / divider) ** curve, scaled by the multiplier. Distances in
@@ -81,6 +235,9 @@ def collect(mr):
         props = _props(mr, i)
         settings = props.get('DefaultPostProcessSettings') or {}
         out = {'package': mr.label, 'post_process': post_process(settings), 'haze': haze(settings)}
+        world, modifier = _world_settings(mr, i)
+        out['tone_map'] = tone_map(world, modifier)
+        out['_modifier'] = modifier
         sky = props.get('SkyColor')
         if isinstance(sky, tuple) and len(sky) == 3:
             out['sky_color'] = [round(c, 4) for c in sky]

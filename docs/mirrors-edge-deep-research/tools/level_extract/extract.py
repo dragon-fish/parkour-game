@@ -998,6 +998,13 @@ def main(config_path):
             look['sun'] = sun
             look['sun_direction'] = sun['direction']
             break
+    # The areas the original grades apart: inside one, its settings replace
+    # the world's, the world's PC modifier still added where its own is 0.
+    if look:
+        world_modifier = look.pop('_modifier', None) or environment.settings_block(None, None)
+        look['volumes'] = [v for name in packages.names
+                           for v in environment.post_process_volumes(packages, packages.reader(name), world_modifier)]
+        report['post_process_volumes'] = len(look['volumes'])
     report['environment'] = look.get('package') if look else None
     report['sun'] = '%s.%s' % (look['sun']['package'], look['sun']['name']) if look and look.get('sun') else None
 
