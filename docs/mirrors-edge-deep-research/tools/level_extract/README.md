@@ -335,7 +335,8 @@ textures their materials sample baked like any material's. The builder
   PX_* vents standing over the ordinary ones, and they are most of what a roof's
   smoke looks like there. A PhysX LOD's `type_data.fluid` is its
   PhysXParticleSystem: `acceleration` (ExternalAcceleration plus the scene's
-  -800 uu/s^2 gravity), `damping`, and the rest as `props`.
+  -800 uu/s^2 gravity), `damping`, `max_motion` (MaxMotionDistance in metres:
+  the furthest a particle moves in one fluid step), and the rest as `props`.
 - **Static arrays** (`MirrorFlags[3]`) come back element by element; a struct
   that is natively serialised (Guid, Matrix) is carried raw, never parsed.
 

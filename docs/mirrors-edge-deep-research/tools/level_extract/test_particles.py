@@ -203,9 +203,11 @@ class FluidTests(unittest.TestCase):
             return P.physx_fluid(None, P.Ref(reader, 1))
 
     def test_the_fluid_feels_its_external_acceleration_and_the_scenes_gravity(self):
-        fluid = self.fluid({'Damping': 0.2, 'ExternalAcceleration': (0.0, 0.0, 810.0)})
+        fluid = self.fluid({'Damping': 0.2, 'ExternalAcceleration': (0.0, 0.0, 810.0), 'MaxMotionDistance': 1.0,
+                            'RestParticleDistance': 5.0})
         self.assertEqual(fluid['acceleration'], [0.0, 0.1, 0.0], '810 up against 800 down, in Godot metres')
         self.assertEqual(fluid['damping'], 0.2)
+        self.assertEqual(fluid['max_motion'], 0.01, 'one uu a step, whatever the rest spacing')
 
     def test_bdisablegravity_leaves_the_external_acceleration_alone(self):
         fluid = self.fluid({'ExternalAcceleration': (0.0, 0.0, 810.0), 'bDisableGravity': True})

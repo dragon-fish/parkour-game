@@ -693,8 +693,12 @@ def physx_fluid(packages, ref):
     its particles once spawned, in Godot metres and axes. `acceleration` is
     the fluid's ExternalAcceleration plus the scene's gravity (none under
     bDisableGravity), world space; `damping` is its velocity damping per
-    second. Collision and particle interaction are carried in `props` only.
-    None when there is no fluid."""
+    second; `max_motion` the furthest a particle moves in one fluid step.
+    [ME:CONFIRMED MirrorsEdge.exe 0x00e86abf] the fluid's NxFluidDesc takes
+    motionLimitMultiplier = MaxMotionDistance / RestParticleDistance, and
+    PhysX counts that multiplier in rest spacings, so the limit is
+    MaxMotionDistance uu a step whatever the spacing. Collision and particle
+    interaction are carried in `props` only. None when there is no fluid."""
     if not isinstance(ref, Ref):
         return None
     reader, index = resolve(packages, ref.reader, ref.index)
@@ -705,6 +709,7 @@ def physx_fluid(packages, ref):
     gravity = 0.0 if props.get('bDisableGravity', False) else PHYSX_GRAVITY_Z
     return {'name': _reference_name(ref), 'damping': float(props.get('Damping', 0.0)),
             'acceleration': _godot_vector((external[0], external[1], external[2] + gravity)),
+            'max_motion': float(props.get('MaxMotionDistance', 0.0)) / UU,
             'props': _plain(props)}
 
 
