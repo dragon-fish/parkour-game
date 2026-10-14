@@ -167,6 +167,12 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			# they were flat translucent panes, dozens of them in the pillar
 			# hall, all glare: collide, do not draw.
 			continue
+		if surface.get("invisible", false):
+			# A material that covers no pixel (materials.py, draws_nothing):
+			# the tutorial's light-block boxes under the slide duct. Drawn with
+			# the family colour they were two grey boxes the original never
+			# shows: collide, do not draw.
+			continue
 		var uvs := _uvs(record, _uv_set(record, surface), positions.size())
 		var material_name: String = surface["material"] if surface["material"] != null else ""
 		var material: Material
