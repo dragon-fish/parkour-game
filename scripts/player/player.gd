@@ -1540,6 +1540,9 @@ func reset_state() -> void:
 	_slide_off_ledge_timer = -1.0
 	_against_wall_state = AW_NONE
 	_stop_against_wall_timer = -1.0
+	against_wall_normal = Vector3.UP
+	ambient_shadow_source_direction = Vector3.UP
+	in_shadow_altering_move_state = false
 	root_motion_active = false
 	previous_root_motion_active = false
 	root_motion_delta = Vector3.ZERO
@@ -4283,6 +4286,12 @@ func _pawn_tick(delta: float, input: MoveInput) -> void:
 		elif not input.crouch_held:
 			_roll_trigger_pressed = false
 	_update_against_wall()
+	# TdPlayerPawn.Tick, locally controlled: the ambient term of her shadow
+	# comes out of the wall she is against, otherwise from above her.
+	if _against_wall_state == AW_AGAINST_WALL:
+		set_ambient_shadow_direction(against_wall_normal, false)
+	else:
+		reset_ambient_shadow_direction(false)
 	# TdPawn.Tick, from TdPlayerPawn.Tick's super call.
 	_update_movement_volume()
 	_tick_ignore_timers(delta)
@@ -4482,6 +4491,9 @@ const AW_AGAINST_WALL_RIGHT := 3
 ## traces from 14 uu either side of the centre, 68 uu up (26 crouched), out
 ## along the facing for max(40, 0.28 * forward speed) uu with a (2, 2, 5) box;
 ## a hand counts on a face turned more than 60 degrees toward it.
+## AgainstWallNormal is the last hit's normal, tilted up by 0.1 and
+## normalised: the two traces share one hit, so a hand that misses leaves the
+## other hand's normal in it, and two misses leave it straight up.
 func check_against_wall() -> int:
 	if is_dying():
 		return AW_NONE
@@ -4491,11 +4503,15 @@ func check_against_wall() -> int:
 	var reach: float = maxf(40.0, velocity.dot(x) / PawnPhysics.UU * 0.28) * PawnPhysics.UU
 	var extent := Vector3(2.0, 5.0, 2.0) * PawnPhysics.UU
 	var hands: Array[bool] = []
+	var last_normal := Vector3.ZERO
 	for side in [1.0, -1.0]:
 		var start: Vector3 = global_position + right * (14.0 * PawnPhysics.UU * side) + Vector3.UP * up
 		var hit: Dictionary = phys.box_trace(start + x * reach, start, extent)
 		var normal: Vector3 = hit["normal"]
+		if hit["collider"] != null:
+			last_normal = normal
 		hands.append(hit["collider"] != null and normal.dot(x) < -0.5)
+	against_wall_normal = (last_normal + Vector3.UP * 0.1).normalized()
 	if hands[0] and hands[1]:
 		return AW_AGAINST_WALL
 	if hands[1]:
@@ -4510,6 +4526,35 @@ func against_wall_state() -> int:
 	return _against_wall_state
 
 var _against_wall_state: int = AW_NONE
+## TdPawn.AgainstWallNormal: out of the wall, as check_against_wall() last
+## left it.
+var against_wall_normal: Vector3 = Vector3.UP
+
+## AmbientShadowSourceDirection of the light environment her shadow is cast
+## from, toward its source, Godot axes. The pawn points it, so it lives here
+## (a level's shadow light reads it: tools/me_level/me_shadow_light.gd).
+## [ME:CONFIRMED TdGame.u TdPlayerPawn] Kept by the tick and by TdMove_Grab.
+var ambient_shadow_source_direction: Vector3 = Vector3.UP
+## bIsInShadowAlteringMoveState: a move has set the direction, and the tick
+## leaves it alone until that move resets it.
+var in_shadow_altering_move_state: bool = false
+
+## TdPlayerPawn.SetAmbientShadowDirection.
+func set_ambient_shadow_direction(direction: Vector3, is_shadow_altering_move: bool) -> void:
+	if in_shadow_altering_move_state and not is_shadow_altering_move:
+		return
+	ambient_shadow_source_direction = direction
+	in_shadow_altering_move_state = is_shadow_altering_move
+
+## TdPlayerPawn.ResetAmbientShadowDirection: Normal((0, 0, 10) - Vector(Rotation)),
+## above her and a tenth of the way behind where she faces.
+func reset_ambient_shadow_direction(is_shadow_altering_move: bool) -> void:
+	if in_shadow_altering_move_state and not is_shadow_altering_move:
+		return
+	ambient_shadow_source_direction = (Vector3.UP * 10.0 - facing()).normalized()
+	if is_shadow_altering_move:
+		in_shadow_altering_move_state = false
+
 ## SetTimer(0.15, false, 'StopAgainstWall'): seconds left, below 0 when not
 ## armed.
 var _stop_against_wall_timer: float = -1.0

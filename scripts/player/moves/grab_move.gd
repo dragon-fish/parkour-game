@@ -162,6 +162,9 @@ func set_grab_type(value: int) -> void:
 
 ## TdMove_Grab.StartMove.
 func enter(_previous: StringName) -> void:
+	# Hanging, her shadow's ambient term comes out of the wall, and stays
+	# there until she lets go, whatever the tick would set.
+	player.set_ambient_shadow_direction(player.move_normal, true)
 	sloped_ledge = player.move_ledge_normal.y < 0.999
 	relative_extent = player.traces.calculate_relative_extent(player.collision_radius())
 	player.velocity = Vector3.ZERO
@@ -181,6 +184,7 @@ func enter(_previous: StringName) -> void:
 
 ## TdMove_Grab.StopMove.
 func exit() -> void:
+	player.reset_ambient_shadow_direction(true)
 	player.use_root_motion(false)
 	player.use_root_rotation(false)
 	player.face_rotation_time_left = 0.5

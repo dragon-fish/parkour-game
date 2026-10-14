@@ -10,7 +10,8 @@ extends DirectionalLight3D
 #   - the pawn's light environment gathers a SHADOW environment, an SH of every
 #     light that has bCastCompositeShadow (the sun, the sky light), each times
 #     its visibility from the pawn's bounds centre (one trace), plus
-#     AmbientShadowColor from AmbientShadowSourceDirection, straight up;
+#     AmbientShadowColor from AmbientShadowSourceDirection, which the pawn
+#     itself keeps pointing (Player.ambient_shadow_source_direction);
 #   - its dominant lobe d (the SH's band 1) places a point light at
 #     LightDistance bounds radii along d; the shadow reaches Radius =
 #     R * (LightDistance + ShadowDistance + 2) from it;
@@ -51,8 +52,8 @@ const TRACE_M := 1000.0
 @export var light_distance := 8.0
 ## [ME:CONFIRMED Engine DynamicLightEnvironmentComponent default] in bounds radii.
 @export var shadow_distance := 1.0
-## [ME:CONFIRMED DLE class defaults] AmbientShadowColor, linear, from
-## AmbientShadowSourceDirection (0, 0, 1): straight up.
+## [ME:CONFIRMED DLE class defaults] AmbientShadowColor, linear. Where it
+## comes from is the pawn's (_ambient_source_direction()).
 @export var ambient_shadow_color := Vector3(0.15, 0.15, 0.15)
 ## [ME:CONFIRMED DLE class default] MinTimeBetweenFullUpdates, seconds.
 @export var update_interval_s := 0.3
@@ -107,7 +108,7 @@ func _physics_process(delta: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if now >= _next_update:
 		_tag_casters(player)
-		_target = shadow_environment(_sun_visibility(centre))
+		_target = shadow_environment(_sun_visibility(centre), _ambient_source_direction(player))
 		var camera := get_viewport().get_camera_3d()
 		var distance := camera.global_position.distance_to(centre) if camera != null else 0.0
 		_next_update = now + update_interval_s * randf_range(0.8, 1.2) \
@@ -136,13 +137,15 @@ func _physics_process(delta: float) -> void:
 
 
 ## The shadow environment's SH: [9 x Vector3], linear RGB per coefficient.
-## `visible` says, per sun, whether it reaches the pawn.
-func shadow_environment(visible: Array) -> Array:
+## `visible` says, per sun, whether it reaches the pawn; `ambient_direction`
+## is AmbientShadowSourceDirection, toward its source, Godot axes. Its class
+## default is straight up.
+func shadow_environment(visible: Array, ambient_direction := Vector3.UP) -> Array:
 	var out := _empty_sh()
 	for i in sun_directions.size():
 		if i < visible.size() and visible[i]:
 			_add_lobe(out, sun_directions[i].normalized(), sun_intensities[i])
-	_add_lobe(out, Vector3.UP, ambient_shadow_color)
+	_add_lobe(out, ambient_direction.normalized(), ambient_shadow_color)
 	# [ME:CONFIRMED DLE 0xff2310] each hemisphere's DC and z terms; untraced.
 	out[0] += (sky_upper + sky_lower) * 0.5641896
 	out[2] += (sky_upper - sky_lower) * 0.4886025
@@ -233,6 +236,17 @@ func _sun_visibility(centre: Vector3) -> Array:
 				Common.SUN_OCCLUDER_LAYER)
 		out.append(space.intersect_ray(query).is_empty())
 	return out
+
+
+## AmbientShadowSourceDirection as the pawn sets it. [ME:CONFIRMED TdGame.u
+## TdPlayerPawn.Tick, TdMove_Grab] it moves with her: out of the sun her
+## shadow falls a little ahead of her, and onto the wall she stands against
+## or hangs from. A body that keeps none is lit from above.
+static func _ambient_source_direction(player: Node) -> Vector3:
+	var direction = player.get("ambient_shadow_source_direction")
+	if direction is Vector3 and (direction as Vector3).length_squared() > 1e-8:
+		return direction
+	return Vector3.UP
 
 
 ## [ME:CONFIRMED 0x106e8c0] the shadow fades with the resolution its caster

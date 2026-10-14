@@ -262,6 +262,18 @@ func test_the_sun_trace_reads_what_casts_shadows_not_what_collides() -> void:
 	assert_eq(light._sun_visibility(Vector3.ZERO), [false], "a shadow caster let the sun through")
 
 
+## Out of the sun, the shadow is cast from the ambient term's own direction:
+## against a wall, toward the wall rather than down.
+func test_out_of_the_sun_the_shadow_follows_the_ambient_source() -> void:
+	var light := ShadowLight.new()
+	light.sun_directions = PackedVector3Array([Vector3(0.3, 0.8, -0.5).normalized()])
+	light.sun_intensities = PackedVector3Array([Vector3(1.95, 1.79, 1.48)])
+	var out_of_wall := (Vector3.BACK + Vector3.UP * 0.1).normalized()
+	var shade: Dictionary = ShadowLight.representative_shadow(light.shadow_environment([false], out_of_wall))
+	assert_almost_eq((shade.direction as Vector3).dot(out_of_wall), 1.0, 1e-4)
+	light.free()
+
+
 ## Every drawn shadow caster with colliding triangles keeps the sun off the
 ## player, whatever it collides with; designer collision with no picture and
 ## the level's volumes do not.
