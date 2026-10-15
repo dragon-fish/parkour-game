@@ -2,8 +2,9 @@
 extends DirectionalLight3D
 
 # The player's shadow on a lightmapped level: the original's DynamicLightEnvironment
-# modulated shadow. The baked world takes no live light (me_lightmap.gdshaderinc);
-# this light only takes light away from it, where the player's body blocks it.
+# modulated shadow. Under classic lighting the baked world takes no live light
+# (me_lightmap.gdshaderinc); this light only takes light away from it, where the
+# player's body blocks it.
 #
 # [ME:CONFIRMED MirrorsEdge.exe DLE 0xff4690, 0xff4517, 0x106e8c0; Engine/Shaders/
 # ModShadowProjectionPixelShader.usf, ModShadowCommon.usf] what the original does:
@@ -39,9 +40,9 @@ extends DirectionalLight3D
 # TdGame.u] the original's third-person mesh has bOwnerNoSeeWithShadow:
 # unseen, still casting; HeadlessVariant's shadow stand-ins do the same here).
 #
-# CLASSIC LIGHTING ONLY. Under modern lighting (SettingsStore.LIGHTING_MODES)
-# the live sun lights the world and casts the player's shadow itself; this one
-# stays dark.
+# CLASSIC LIGHTING ONLY. Under hybrid and modern lighting
+# (SettingsStore.LIGHTING_MODES) the live sun lights the world and casts the
+# player's shadow itself; this one stays dark.
 #
 # RUNTIME ONLY beyond the built pose: in the editor it points along the sun
 # and darkens nothing, nothing it lights being able to cast into it until a
@@ -86,7 +87,8 @@ const TRACE_M := 1000.0
 var _current := []
 var _target := []
 var _next_update := 0.0
-var _modern := false
+## Dark under any lighting but classic.
+var _dark := false
 
 
 func _ready() -> void:
@@ -98,8 +100,8 @@ func _ready() -> void:
 
 
 func use_lighting(mode: String) -> void:
-	_modern = mode == "modern"
-	if _modern:
+	_dark = mode != "classic"
+	if _dark:
 		visible = false
 		RenderingServer.global_shader_parameter_set(SPHERE_GLOBAL, Vector4.ZERO)
 
@@ -110,7 +112,7 @@ func _exit_tree() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if Engine.is_editor_hint() or _modern:
+	if Engine.is_editor_hint() or _dark:
 		return
 	var player := _player()
 	if player == null:

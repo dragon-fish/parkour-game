@@ -14,7 +14,8 @@ extends Node3D
 # than at build time because the build's values are the right ones; it is the
 # load that loses them.
 #
-# CLASSIC draws what the scene file holds: the lightmapped materials. MODERN
+# CLASSIC and HYBRID draw what the scene file holds: the lightmapped materials
+# (hybrid's live sun is a branch of their shader). MODERN
 # draws each baked surface with its plain material, the one the mesh library
 # lights live (Common.MODERN_MATERIALS_META), and Runner Vision goes back to
 # its overlay, which is lit the same way. A switch of override materials, not

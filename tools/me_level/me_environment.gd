@@ -43,6 +43,12 @@ extends Node3D
 #     (me_lightmap.gdshaderinc); the sun and the lamps light only what moves,
 #     there is no SDFGI, and the shadow light (me_shadow_light.gd) casts the
 #     player's shadow onto the bake;
+#   - hybrid: drawn with the bake as classic, but the live sun, in the bake's
+#     own colour, lights the static world too and casts its shadows on it; the
+#     shader takes the sun's share out of the bake, which is left as the
+#     indirect light (me_lightmap.gdshaderinc). The lamps stay baked, there
+#     is no SDFGI, and the shadow light is dark: the sun's own shadow is the
+#     player's;
 #   - modern: the static world takes its plain materials (me_lightmapped.gd)
 #     under the live sun, lamps and SDFGI, as a level without a bake is lit,
 #     but in the bake's own units and exposed by the same eye adaptation.
@@ -63,6 +69,10 @@ const DOME_SHADER := preload("res://tools/me_level/me_dome.gdshader")
 const CLOUD_PANORAMA := preload("res://assets/sky/kloofendal_48d_partly_cloudy_puresky_2k.hdr")
 ## Inside the camera's far plane (4000 m) and beyond every backdrop.
 const DOME_RADIUS_M := 2500.0
+## The shader globals hybrid lighting is drawn by (me_lightmap.gdshaderinc).
+const HYBRID_GLOBAL := &"me_lighting_hybrid"
+const HYBRID_SUN_DIRECTION_GLOBAL := &"me_hybrid_sun_direction"
+const HYBRID_SUN_COLOR_GLOBAL := &"me_hybrid_sun_color"
 
 # ---- data: the original's, read from its packages ----
 
@@ -115,7 +125,9 @@ const NOMINAL_SUN_BRIGHTNESS := 2.0
 @export var sun_energy_scale := 1.0
 ## How much of the baked sun's colour the live sun keeps, 0 white to 1 all
 ## of it. The bake mixed its warm sun with a blue sky light into whites that
-## read neutral; the live sun alone reads yellow at 1.
+## read neutral; the live sun alone reads yellow at 1. Not under hybrid
+## lighting, where the bake's sky light is still there: the sun takes its
+## whole colour.
 @export var sun_tint := 0.2
 ## Soft edge of the sun's shadows, degrees of sun disc. [ME:CONFIRMED] the
 ## bake's SoftShadowAngle is 2.0, but DO NOT raise this above 0: Godot's
@@ -222,7 +234,14 @@ func use_lighting(mode: String) -> void:
 	lighting = mode
 	if _env != null:
 		_apply_light(_env)
-	_apply_sun_layers()
+	_apply_sun_mode()
+
+
+## The globals outlive the level: the next one would be drawn with this one's
+## sun taken out of its bake until its own Environment set them.
+func _exit_tree() -> void:
+	if lightmapped:
+		RenderingServer.global_shader_parameter_set(HYBRID_GLOBAL, false)
 
 
 ## The dome rides with the camera: what it shows depends on direction only.
@@ -305,13 +324,19 @@ func _add_dome() -> void:
 
 ## Whether the static world is drawn from its bake right now.
 func baked() -> bool:
-	return lightmapped and lighting == "classic"
+	return lightmapped and lighting != "modern"
+
+
+## Whether the live sun takes the bake's sunlight over right now.
+func hybrid() -> bool:
+	return lightmapped and lighting == "hybrid"
 
 
 func _apply_light(env: Environment) -> void:
 	if baked():
 		# The bake is the world's light, and its occlusion: nothing static takes
-		# live light, so neither GI nor SSAO has anything left to do.
+		# live light but hybrid's sun, which brings its shadows, so neither GI
+		# nor SSAO has anything left to do.
 		env.sdfgi_enabled = false
 		env.ssao_enabled = false
 		env.ssil_enabled = false
@@ -457,7 +482,6 @@ func _apply_sun(arena: Arena) -> void:
 	var up := Vector3.UP if absf(sun_direction.normalized().y) < 0.99 else Vector3.FORWARD
 	sun.global_basis = Basis.looking_at(-sun_direction.normalized(), up)
 	sun.visible = true
-	sun.light_color = _sun_color()
 	sun.light_energy = sun_brightness * sun_energy_scale
 	sun.light_angular_distance = sun_softness_deg
 	sun.shadow_enabled = true
@@ -469,15 +493,24 @@ func _apply_sun(arena: Arena) -> void:
 	sun.directional_shadow_split_3 = 0.4
 	sun.directional_shadow_fade_start = 0.9
 	_sun = sun
-	_apply_sun_layers()
+	_apply_sun_mode()
 
 
-func _apply_sun_layers() -> void:
+func _apply_sun_mode() -> void:
+	var hybrid_on := hybrid() and _sun != null
+	if lightmapped:
+		RenderingServer.global_shader_parameter_set(HYBRID_GLOBAL, hybrid_on)
+	if hybrid_on:
+		# The sun as the bake has it, which is what the shader takes out.
+		var bake_sun := sun_color * sun_brightness
+		RenderingServer.global_shader_parameter_set(HYBRID_SUN_DIRECTION_GLOBAL, sun_direction.normalized())
+		RenderingServer.global_shader_parameter_set(HYBRID_SUN_COLOR_GLOBAL, Vector3(bake_sun.r, bake_sun.g, bake_sun.b))
 	if _sun == null:
 		return
-	if baked():
-		# What moves only: the baked world has this sun in its bake already,
-		# and its shadow light (me_shadow_light.gd) is the only light it takes.
+	_sun.light_color = sun_color if hybrid_on else _sun_color()
+	if baked() and not hybrid_on:
+		# What moves only: the classic bake has this sun in it already, and
+		# its shadow light (me_shadow_light.gd) is the only light it takes.
 		_sun.light_cull_mask &= ~Common.BAKED_LAYER
 	else:
 		_sun.light_cull_mask |= Common.BAKED_LAYER

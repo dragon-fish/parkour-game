@@ -5,13 +5,14 @@ extends Node3D
 # brightness in meta "me_brightness"; its energy is that times energy_scale,
 # or modern_energy_scale under modern lighting.
 #
-# Under classic lighting (SettingsStore.LIGHTING_MODES) these light only what
-# moves -- the player's body, movers, rigid bodies -- the static world being
-# drawn from its bake, and the frame is exposed by the original's eye
-# adaptation. energy_scale was judged against lit walls under the older fixed
-# exposure, not for that: re-judge it against the body beside a baked wall
-# (modern_energy_scale's measurement says the bake's own units want about 1).
-# Under modern lighting they light the world too.
+# Under classic and hybrid lighting (SettingsStore.LIGHTING_MODES) these light
+# only what moves -- the player's body, movers, rigid bodies -- the static world
+# being drawn from its bake, lamps and all (hybrid takes only the sun out of
+# it), and the frame is exposed by the original's eye adaptation. energy_scale
+# was judged against lit walls under the older fixed exposure, not for that:
+# re-judge it against the body beside a baked wall (modern_energy_scale's
+# measurement says the bake's own units want about 1). Under modern lighting
+# they light the world too.
 #
 # energy_scale IS A DIAL, NOT A CONVERSION. The original is baked with Beast and there is no
 # known mapping from its brightness to Godot energy. Judged against the
@@ -107,8 +108,9 @@ func set_present(light: Light3D, on: bool) -> void:
 		set_process(true)
 
 
-## Classic: the baked world takes no lamp, its light is in the bake. Modern:
-## every lamp but one that lights only what moves lights the world too.
+## Classic and hybrid: the baked world takes no lamp, its light is in the
+## bake. Modern: every lamp but one that lights only what moves lights the
+## world too.
 func use_lighting(mode: String) -> void:
 	_lighting = mode
 	for light in get_children():

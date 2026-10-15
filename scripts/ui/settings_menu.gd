@@ -46,7 +46,7 @@ const ANTIALIASING_LABELS := {
 }
 
 ## lighting row's labels, in SettingsStore.LIGHTING_MODES order.
-const LIGHTING_LABELS := {"classic": "经典 ME 光照", "modern": "现代光照"}
+const LIGHTING_LABELS := {"classic": "经典 ME 光照", "hybrid": "混合光照", "modern": "现代光照"}
 
 ## Stepper rows that are an on/off switch.
 const _SWITCH_KEYS := ["small_third_person_body", "physics_props"]
@@ -66,7 +66,7 @@ const _ROWS := [
 	{"key": "volume", "label": "总音量", "desc": "调整主音量大小。"},
 	{"key": "small_third_person_body", "label": "第三人称小体型", "desc": "第三人称下把角色模型缩小到 85%，人物与场景的比例会更舒服。只影响观感，不改变碰撞与动作，因此部分手部动作可能碰不到或穿过物体。"},
 	{"key": "physics_props", "label": "物理模拟", "desc": "布料会随风飘动、被人推开，纸箱可以撞开。关闭后布料停在原本的形状，纸箱不再移动，能提高帧数。"},
-	{"key": "lighting", "label": "光照", "desc": "只对镜之边缘的关卡生效。经典 ME 光照使用原版烘焙的光照贴图，还原原作的画面，开销也小。现代光照改用实时的太阳与灯光，加上全局光照，一切物体都投下实时阴影，但更吃性能。"},
+	{"key": "lighting", "label": "光照", "desc": "只对镜之边缘的关卡生效。经典 ME 光照使用原版烘焙的光照贴图，还原原作的画面，开销也小。混合光照保留烘焙的灯光与环境光，太阳换成实时的，场景投下实时阴影，开销略高于经典。现代光照改用实时的太阳与灯光，加上全局光照，一切物体都投下实时阴影，但更吃性能。"},
 	{"key": "replay_tutorial", "label": "新手教程", "desc": "回到开场画面重玩一次新手教程。这不会清除任何已保存的进度。"},
 ]
 

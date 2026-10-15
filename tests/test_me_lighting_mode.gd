@@ -1,10 +1,11 @@
 extends GutTest
 
 # The lighting setting of an extracted Mirror's Edge level
-# (SettingsStore.LIGHTING_MODES): classic draws the original's bake, modern the
-# plain materials under live light. What the switch reaches and what it leaves
-# alone; the tutorial's tests read its generated geometry when this machine
-# has it, and pass otherwise.
+# (SettingsStore.LIGHTING_MODES): classic draws the original's bake, hybrid the
+# bake with the live sun taking its sunlight over, modern the plain materials
+# under live light. What the switch reaches and what it leaves alone; the
+# tutorial's tests read its generated geometry when this machine has it, and
+# pass otherwise.
 
 const Common := preload("res://tools/me_level/me_level_common.gd")
 const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
@@ -40,10 +41,25 @@ class Follower extends Node:
 
 func test_classic_is_the_default_and_the_setting_round_trips() -> void:
 	assert_eq(SettingsStore.defaults().lighting, "classic")
-	var saved := SettingsStore.defaults()
-	saved.lighting = "modern"
-	SettingsStore.save_settings(saved)
-	assert_eq(SettingsStore.load_settings().lighting, "modern")
+	assert_eq(SettingsStore.LIGHTING_MODES[0], "classic", "an unknown mode falls back to the first")
+	for mode in ["hybrid", "modern"]:
+		assert_has(SettingsStore.LIGHTING_MODES, mode)
+		var saved := SettingsStore.defaults()
+		saved.lighting = mode
+		SettingsStore.save_settings(saved)
+		assert_eq(SettingsStore.load_settings().lighting, mode)
+
+
+func test_every_mode_has_a_menu_label() -> void:
+	for mode: String in SettingsStore.LIGHTING_MODES:
+		assert_true(MeSettingsMenu.LIGHTING_LABELS.has(mode), "no label for %s" % mode)
+
+
+## A shader that reads a global the project does not declare does not compile.
+func test_the_lightmap_shaders_globals_are_declared() -> void:
+	for name in [EnvironmentScript.HYBRID_GLOBAL, EnvironmentScript.HYBRID_SUN_DIRECTION_GLOBAL,
+			EnvironmentScript.HYBRID_SUN_COLOR_GLOBAL, ShadowLight.SPHERE_GLOBAL]:
+		assert_true(ProjectSettings.has_setting("shader_globals/" + name), "%s is not in [shader_globals]" % name)
 
 
 func test_the_setting_reaches_what_follows_it_now_and_later() -> void:
@@ -80,6 +96,31 @@ func test_the_environment_switches_gi_and_the_suns_reach() -> void:
 	node.free()
 
 
+func test_hybrid_draws_the_bake_under_the_live_sun_without_gi() -> void:
+	var node := EnvironmentScript.new()
+	node.lightmapped = true
+	node._env = Environment.new()
+	node._sun = DirectionalLight3D.new()
+	for mode in ["classic", "modern"]:
+		node.use_lighting(mode)
+		node.use_lighting("hybrid")
+		assert_true(node.baked(), "hybrid does not draw the bake (from %s)" % mode)
+		assert_true(node.hybrid())
+		assert_false(node._env.sdfgi_enabled, "hybrid kept SDFGI (from %s)" % mode)
+		assert_false(node._env.ssao_enabled, "hybrid kept SSAO over the bake (from %s)" % mode)
+		assert_ne(node._sun.light_cull_mask & Common.BAKED_LAYER, 0, "the hybrid sun does not reach the static world (from %s)" % mode)
+	node.use_lighting("classic")
+	assert_false(node.hybrid())
+	assert_eq(node._sun.light_cull_mask & Common.BAKED_LAYER, 0, "leaving hybrid left the sun on the bake")
+	node.use_lighting("hybrid")
+	node.use_lighting("modern")
+	assert_false(node.hybrid())
+	assert_false(node.baked())
+	assert_true(node._env.sdfgi_enabled)
+	node._sun.free()
+	node.free()
+
+
 func test_a_level_without_a_bake_is_lit_one_way_only() -> void:
 	var node := EnvironmentScript.new()
 	node.lightmapped = false
@@ -109,16 +150,22 @@ func test_world_lamps_follow_the_mode_and_character_lamps_do_not() -> void:
 	lights.use_lighting("classic")
 	assert_eq(world.light_cull_mask & Common.BAKED_LAYER, 0, "a world lamp lights the bake in classic")
 	assert_almost_eq(world.light_energy, 2.0 * lights.energy_scale, 1e-5)
+	lights.use_lighting("modern")
+	lights.use_lighting("hybrid")
+	assert_eq(world.light_cull_mask & Common.BAKED_LAYER, 0, "a world lamp lights the bake in hybrid")
+	assert_almost_eq(world.light_energy, 2.0 * lights.energy_scale, 1e-5, "hybrid lamps are not the classic ones")
+	assert_eq(character.light_cull_mask, 1 << 3)
 
 
-func test_the_shadow_light_stays_dark_in_modern() -> void:
-	var light := ShadowLight.new()
-	add_child_autofree(light)
-	light.visible = true
-	light.use_lighting("modern")
-	assert_false(light.visible)
-	light._physics_process(0.016)
-	assert_false(light.visible, "the shadow light came back on under modern lighting")
+func test_the_shadow_light_stays_dark_but_in_classic() -> void:
+	for mode in ["modern", "hybrid"]:
+		var light := ShadowLight.new()
+		add_child_autofree(light)
+		light.visible = true
+		light.use_lighting(mode)
+		assert_false(light.visible)
+		light._physics_process(0.016)
+		assert_false(light.visible, "the shadow light came back on under %s lighting" % mode)
 
 
 ## No lightmapped material is drawn anywhere in modern, every baked surface
@@ -140,6 +187,9 @@ func test_the_tutorials_baked_world_swaps_its_materials_both_ways() -> void:
 			if material == null:
 				unlit += 1
 	assert_eq(unlit, 0, "baked surfaces left with no material in modern")
+	root.use_lighting("hybrid")
+	assert_eq(_drawn(root), before, "hybrid does not draw what the file draws")
+	root.use_lighting("modern")
 	root.use_lighting("classic")
 	assert_eq(_drawn(root), before, "classic did not restore what the file draws")
 
@@ -158,6 +208,9 @@ func test_the_tutorials_runner_vision_paints_with_the_overlay_in_modern() -> voi
 	root.use_lighting("modern")
 	assert_eq(targets.filter(func(t: RunnerVisionTarget) -> bool: return t.paint_in_material).size(), 0,
 			"a target still paints in a material modern lighting does not draw")
+	root.use_lighting("hybrid")
+	assert_eq(targets.filter(func(t: RunnerVisionTarget) -> bool: return not t.paint_in_material).size(), 0,
+			"a target paints with the overlay over a hybrid bake")
 	root.use_lighting("classic")
 	assert_eq(targets.filter(func(t: RunnerVisionTarget) -> bool: return not t.paint_in_material).size(), 0)
 

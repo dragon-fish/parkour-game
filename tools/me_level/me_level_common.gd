@@ -80,8 +80,9 @@ const MATINEE_META := &"me_matinee"
 
 ## Render layers of a lightmapped level and its shadow light (me_shadow_light.gd).
 ## BAKED: the static world drawn from its bake (me_lightmap.gdshaderinc),
-## reached by no light but the shadow light, whose only job there is to darken
-## it where a character blocks the sun. CHARACTER_SHADOW: what casts into that
+## reached under classic lighting by no light but the shadow light, whose only
+## job there is to darken it where a character blocks the sun; under hybrid by
+## the live sun instead (me_environment.gd). CHARACTER_SHADOW: what casts into that
 ## light -- the player's body, tagged at runtime -- and nothing else. Not the
 ## static world: the bake already holds every shadow it throws, and casting
 ## them again drew each one twice as dark. Not the level's movers, rigid bodies

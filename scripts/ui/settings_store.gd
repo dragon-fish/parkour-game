@@ -46,9 +46,10 @@ const PHYSICS_PROPS_GROUP := "physics_props"
 static var physics_props_on := true
 
 ## How an extracted Mirror's Edge level is lit (me_environment.gd): "classic",
-## the original's own baked lightmaps, or "modern", live sun and lamps with
-## SDFGI. Levels of our own have nothing this switches.
-const LIGHTING_MODES := ["classic", "modern"]
+## the original's own baked lightmaps; "hybrid", those lightmaps for all but
+## the sun, which is live and casts live shadows; or "modern", live sun and
+## lamps with SDFGI. Levels of our own have nothing this switches.
+const LIGHTING_MODES := ["classic", "hybrid", "modern"]
 ## What follows the lighting setting; each joins it itself: see follow_lighting().
 const LIGHTING_GROUP := "me_lighting"
 ## lighting as last applied, for a level or section loaded afterwards.

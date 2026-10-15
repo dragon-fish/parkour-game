@@ -55,6 +55,18 @@ me_shadow_light_sphere={
 "type": "vec4",
 "value": Vector4(0, 0, 0, 0)
 }
+me_lighting_hybrid={
+"type": "bool",
+"value": false
+}
+me_hybrid_sun_direction={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}
+me_hybrid_sun_color={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
 
 [rendering]
 

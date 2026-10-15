@@ -1,16 +1,27 @@
 // A static surface of an extracted Mirror's Edge level, lit by the original's
-// own Beast lightmap and by nothing live: what the original's base pass draws
-// for a lightmapped primitive. The level's fog still reaches it.
+// own Beast lightmap: what the original's base pass draws for a lightmapped
+// primitive. The level's fog still reaches it. Drawn under classic and hybrid
+// lighting (SettingsStore.LIGHTING_MODES); modern swaps in plain materials.
 //
-// The bake is the EMISSION, and the only light that changes it is the
-// level's shadow light (geometry_builder's ShadowLight): a directional light
-// of NEGATIVE energy, which only takes light away. Where something that moves
-// blocks the sun, the bake is multiplied by the shadow's modulation, as the
-// original's modulated shadows multiply the frame (light() below). Any other
-// light reaching the surface -- the shell's sun in the editor -- is ignored:
-// its shadows are in the bake already. With the shadow light off or out of
-// range the surface is its bake exactly, as an unshaded one was. Ambient and
-// specular are off so nothing else of Godot's lighting is added.
+// CLASSIC: the bake is the EMISSION, and the only light that changes it is
+// the level's shadow light (geometry_builder's ShadowLight): a directional
+// light of NEGATIVE energy, which only takes light away. Where something that
+// moves blocks the sun, the bake is multiplied by the shadow's modulation, as
+// the original's modulated shadows multiply the frame (light() below). Any
+// other light reaching the surface -- the shell's sun in the editor -- is
+// ignored: its shadows are in the bake already. With the shadow light off or
+// out of range the surface is its bake exactly, as an unshaded one was.
+//
+// HYBRID (me_lighting_hybrid): the live sun takes the bake's sunlight over.
+// The sun's share of the three coefficients is estimated and taken out
+// (fragment()), the rest of the bake -- sky light, bounce, lamps -- stays the
+// EMISSION, and light() adds the live sun back with its live shadows, on the
+// surface's own albedo. The shadow light is dark then (me_shadow_light.gd):
+// the sun's own shadow is the player's. A non-directional surface has no
+// direction to tell the sun's share by and stays its whole bake, unlit by the
+// live sun.
+//
+// Ambient and specular are off so nothing else of Godot's lighting is added.
 //
 // [ME:CONFIRMED Engine/Shaders/BasePassPixelShader.usf, BasePassVertexShader.usf,
 // LocalVertexFactory.usf, MaterialTemplate.usf]
@@ -97,6 +108,14 @@ global uniform vec4 me_shadow_light_sphere;
 const float SHADOW_FALLOFF_EXPONENT = 0.5;
 varying float shadow_falloff;
 
+// Hybrid lighting: on, the unit vector toward the baked sun (world space) and
+// that sun in the bake's own units, BakerColor * BakerBrightness
+// (me_environment.gd). Off under classic lighting and in the editor.
+global uniform bool me_lighting_hybrid;
+global uniform vec3 me_hybrid_sun_direction;
+global uniform vec3 me_hybrid_sun_color;
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
 varying vec3 vertex_light_0;
 varying vec3 vertex_light_1;
 varying vec3 vertex_light_2;
@@ -146,6 +165,32 @@ void fragment() {
 		lm1 = texture(lightmap_1, at).rgb * lightmap_scale_1;
 		lm2 = texture(lightmap_2, at).rgb * lightmap_scale_2;
 	}
+	bool hybrid = me_lighting_hybrid && !nondirectional;
+	if (hybrid) {
+		// The sun adds to each coefficient in proportion to p, the sun's
+		// direction projected on that coefficient's basis vector; what else
+		// the bake holds is taken as the same in all three. So the sun's
+		// strength s is the least-squares fit of the coefficients' luma
+		// deviations from their mean to p's, never negative, and never more
+		// than the sun itself would give a surface facing it this way: a
+		// steep fall-off in the bounce light is not taken for sunlight.
+		vec3 to_sun = (VIEW_MATRIX * vec4(me_hybrid_sun_direction, 0.0)).xyz;
+		vec3 sun_t = vec3(dot(to_sun, TANGENT), dot(to_sun, BINORMAL), dot(to_sun, NORMAL));
+		vec3 p = clamp(sun_t * LIGHTMAP_BASIS, 0.0, 1.0);
+		vec3 l = vec3(dot(lm0, LUMA), dot(lm1, LUMA), dot(lm2, LUMA));
+		float p_mean = (p.x + p.y + p.z) / 3.0;
+		vec3 dp = p - p_mean;
+		vec3 dl = l - (l.x + l.y + l.z) / 3.0;
+		float sun_luma = dot(me_hybrid_sun_color, LUMA);
+		float lit = sun_luma * max(sun_t.z, 0.0);
+		float s = max(dot(dl, dp) / max(dot(dp, dp), 1e-5), 0.0);
+		s = min(s, lit / max(p_mean, 1e-4));
+		// Taken out in the sun's colour.
+		vec3 chroma = me_hybrid_sun_color / max(sun_luma, 1e-4);
+		lm0 = max(lm0 - chroma * s * p.x, vec3(0.0));
+		lm1 = max(lm1 - chroma * s * p.y, vec3(0.0));
+		lm2 = max(lm2 - chroma * s * p.z, vec3(0.0));
+	}
 	vec3 light;
 	vec3 shine = vec3(0.0);
 	if (nondirectional) {
@@ -165,7 +210,9 @@ void fragment() {
 	if (use_emissive_texture) {
 		color += texture(emissive_texture, uv).rgb;
 	}
-	ALBEDO = color;
+	// Classic: light() scales the whole bake by the shadow light. Hybrid: the
+	// live sun lights the surface's own albedo.
+	ALBEDO = hybrid ? albedo.rgb : color;
 	EMISSION = color;
 	shadow_falloff = 1.0;
 	if (me_shadow_light_sphere.w > 0.0) {
@@ -191,7 +238,15 @@ void fragment() {
 // The shadow light's colour is 1 - ModShadowColor and its energy -Fade, so
 // -LIGHT_COLOR / PI (LIGHT_COLOR is the linear colour times the energy and PI)
 // is (1 - ModulateColor). Att comes from shadow_falloff; ATTENUATION is Lit.
+//
+// Under hybrid lighting a directional light of positive energy is the live
+// sun, Lambert-lit and shadowed by ATTENUATION. Every other positive light is
+// ignored either way.
 void light() {
+	if (me_lighting_hybrid && !nondirectional && LIGHT_IS_DIRECTIONAL
+			&& LIGHT_COLOR.r + LIGHT_COLOR.g + LIGHT_COLOR.b > 0.0) {
+		DIFFUSE_LIGHT += LIGHT_COLOR / PI * clamp(dot(NORMAL, LIGHT), 0.0, 1.0) * ATTENUATION;
+	}
 	if (LIGHT_IS_DIRECTIONAL && LIGHT_COLOR.r + LIGHT_COLOR.g + LIGHT_COLOR.b < 0.0) {
 		vec3 darkening = min(-LIGHT_COLOR / PI, vec3(1.0));
 		DIFFUSE_LIGHT -= darkening * shadow_falloff * (1.0 - ATTENUATION * ATTENUATION);
